@@ -12,6 +12,10 @@ export function Header() {
     navigate('/login', { replace: true })
   }
 
+  const handleProfileClick = () => {
+    navigate('/profile')
+  }
+
   return (
     <header className="flex items-center justify-between bg-white border-b px-4 py-2">
       <div className="font-semibold text-slate-800">Gestion des surveillances</div>
@@ -22,7 +26,10 @@ export function Header() {
             {role === 'ADMIN' ? 'Responsable SE' : 'Enseignant'}
           </div>
         </div>
-        <Avatar className="h-8 w-8">
+        <Avatar
+          className="h-8 w-8 cursor-pointer hover:ring-2 hover:ring-slate-300 transition-all"
+          onClick={handleProfileClick}
+        >
           <AvatarFallback>{username?.[0]?.toUpperCase() ?? '?'}</AvatarFallback>
         </Avatar>
         <Button variant="outline" size="sm" onClick={handleLogout}>

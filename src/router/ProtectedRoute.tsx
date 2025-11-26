@@ -19,12 +19,17 @@ export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) 
   useEffect(() => {
     if (!isAuthenticated) {
       navigate('/login', { replace: true, state: { from: location } })
-    } else if (allowedRoles && role && !allowedRoles.includes(role)) {
-      navigate('/dashboard', { replace: true })
+      return
     }
-  }, [isAuthenticated, role, allowedRoles, navigate, location])
+
+    if (allowedRoles && role && !allowedRoles.includes(role)) {
+      navigate('/dashboard', { replace: true })
+      return
+    }
+  }, [isAuthenticated, role, allowedRoles, navigate])
 
   if (!isAuthenticated) return null
+  if (allowedRoles && role && !allowedRoles.includes(role)) return null
 
   return <>{children}</>
 }

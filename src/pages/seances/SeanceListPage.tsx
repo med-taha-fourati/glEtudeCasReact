@@ -17,9 +17,7 @@ export function SeanceListPage() {
     data,
     isLoading,
     isError,
-    isSaturee,
-    requiredSurveillants,
-    lockMutation,
+    verrouillerMutation,
     affecterMutation,
     terminerMutation
   } = useSeances()
@@ -30,6 +28,13 @@ export function SeanceListPage() {
   if (isError) return <div>Impossible de charger les séances.</div>
 
   const seances = data ?? []
+
+  // Calculate required surveillants based on matieres
+  const calculateRequired = (seance: any) => {
+    if (!seance.matieres || seance.matieres.length === 0) return 0
+    const totalPaquets = seance.matieres.reduce((sum: number, m: any) => sum + (m.nbPaquets || 0), 0)
+    return Math.ceil(totalPaquets * 1.5)
+  }
 
   return (
     <section className="space-y-4">
@@ -52,9 +57,9 @@ export function SeanceListPage() {
       <Table>
         <TableHeader>
           <TableRow>
-            <TableHead>Date début</TableHead>
-            <TableHead>Date fin</TableHead>
-            <TableHead>Salle</TableHead>
+            <TableHead>Date</TableHead>
+            <TableHead>Horaire</TableHead>
+            <TableHead>Matières</TableHead>
             <TableHead>Surveillants</TableHead>
             <TableHead>Requis</TableHead>
             <TableHead>Saturation</TableHead>
@@ -64,42 +69,46 @@ export function SeanceListPage() {
         </TableHeader>
         <TableBody>
           {seances.map((seance) => {
-            const saturation = isSaturee(seance)
-            const required = requiredSurveillants(seance)
+            const nbSurveillants = seance.enseignants?.length ?? 0
+            const required = calculateRequired(seance)
+            const isSaturee = nbSurveillants >= required
+            const matiereNames = seance.matieres?.map((m: any) => m.nom).join(', ') || 'Aucune'
+            const horaire = seance.horaire?.embHoraire
+            const horaireStr = horaire ? `${horaire.hDebut}h - ${horaire.hFin}h` : 'N/A'
 
             return (
               <TableRow key={seance.id}>
-                <TableCell>{new Date(seance.dateDebut).toLocaleString()}</TableCell>
-                <TableCell>{new Date(seance.dateFin).toLocaleString()}</TableCell>
-                <TableCell>{seance.salle ?? 'N/A'}</TableCell>
-                <TableCell>{seance.currentSurveillants}</TableCell>
+                <TableCell>{new Date(seance.seanceDate).toLocaleDateString()}</TableCell>
+                <TableCell>{horaireStr}</TableCell>
+                <TableCell className="max-w-xs truncate">{matiereNames}</TableCell>
+                <TableCell>{nbSurveillants}</TableCell>
                 <TableCell>{required}</TableCell>
                 <TableCell>
-                  <Badge variant={saturation ? 'destructive' : 'secondary'}>
-                    {saturation ? 'Saturée' : 'Disponible'}
+                  <Badge variant={isSaturee ? 'destructive' : 'secondary'}>
+                    {isSaturee ? 'Saturée' : 'Disponible'}
                   </Badge>
                 </TableCell>
                 <TableCell>
-                  <Badge variant={seance.isLocked ? 'outline' : 'secondary'}>
-                    {seance.isLocked ? 'Verrouillée' : 'Ouverte'}
+                  <Badge variant={seance.verrouillee ? 'outline' : 'secondary'}>
+                    {seance.verrouillee ? 'Verrouillée' : 'Ouverte'}
                   </Badge>
                 </TableCell>
                 <TableCell className="space-x-2 text-right">
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={seance.isLocked || lockMutation.isPending}
-                    onClick={() => lockMutation.mutate(seance.id)}
+                    disabled={seance.verrouillee || verrouillerMutation.isPending}
+                    onClick={() => verrouillerMutation.mutate(true)}
                   >
                     Verrouiller
                   </Button>
                   <Button
                     size="sm"
                     variant="outline"
-                    disabled={terminerMutation.isPending}
+                    disabled={terminerMutation.isPending || seance.passeeExamen}
                     onClick={() => setConfirmId(seance.id)}
                   >
-                    Terminer
+                    {seance.passeeExamen ? 'Terminé' : 'Terminer'}
                   </Button>
                 </TableCell>
               </TableRow>

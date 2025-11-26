@@ -14,10 +14,10 @@ export function useSeances() {
 
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['seances'] })
 
-  const lockMutation = useMutation({
-    mutationFn: (id: number) => seanceApi.lock(id),
-    onSuccess: () => {
-      toast({ title: 'Séance verrouillée' })
+  const verrouillerMutation = useMutation({
+    mutationFn: (verrouiller: boolean) => seanceApi.verrouiller(verrouiller),
+    onSuccess: (_, variables) => {
+      toast({ title: variables ? 'Calendrier verrouillé' : 'Calendrier déverrouillé' })
       invalidate()
     }
   })
@@ -39,20 +39,16 @@ export function useSeances() {
   })
 
   const soumettreVoeuMutation = useMutation({
-    mutationFn: (payload: { seanceId: number }) => seanceApi.soumettreVoeu(payload),
+    mutationFn: (payload: { enseignantId: number; seanceId: number }) =>
+      seanceApi.soumettreVoeu(payload.enseignantId, payload.seanceId),
     onSuccess: () => toast({ title: 'Vœu soumis' })
   })
 
-  const requiredSurveillants = (seance: Pick<Seance, 'nbPaquetsTotal'>) => seance.nbPaquetsTotal * 1.5
-  const isSaturee = (seance: Seance) => seance.currentSurveillants >= requiredSurveillants(seance)
-
   return {
     ...listQuery,
-    lockMutation,
+    verrouillerMutation,
     affecterMutation,
     terminerMutation,
-    soumettreVoeuMutation,
-    requiredSurveillants,
-    isSaturee
+    soumettreVoeuMutation
   }
 }

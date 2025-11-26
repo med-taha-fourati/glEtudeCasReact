@@ -10,33 +10,61 @@ import '@fullcalendar/core/index.js'
 
 export function DashboardHome() {
   const navigate = useNavigate()
-  const { data: seances = [], isLoading: seancesLoading, isSaturee } = useSeances()
+  const { data: seances = [], isLoading: seancesLoading } = useSeances()
   const { data: enseignants = [], isLoading: enseignantsLoading } = useEnseignants()
   const { data: matieres = [], isLoading: matieresLoading } = useMatieres()
 
   const totalSeances = seances.length
-  const seancesSaturees = seances.filter((s) => isSaturee(s)).length
-  const totalSurveillants = seances.reduce((acc, s) => acc + s.currentSurveillants, 0)
-  const events = seances.map((s: any) => {
-    const matieresSeance = (s.matieres ?? s.Matieres ?? []) as any[]
-    const matiereNames = matieresSeance
-      .map((m) => m.nom ?? m.Nom)
-      .filter((n: unknown): n is string => typeof n === 'string' && n.length > 0)
 
-    const title =
-      matiereNames.length > 0
-        ? matiereNames.join(', ')
-        : `Séance #${s.id}${s.salle ? ` - ${s.salle}` : ''}`
+  // Generate vibrant, distinct colors for each seance
+  const getSeanceColor = (id: number) => {
+    const colors = [
+      '#3B82F6', // blue
+      '#10B981', // green
+      '#F59E0B', // amber
+      '#EF4444', // red
+      '#8B5CF6', // violet
+      '#EC4899', // pink
+      '#14B8A6', // teal
+      '#F97316', // orange
+      '#6366F1', // indigo
+      '#84CC16', // lime
+    ]
+    return colors[id % colors.length]
+  }
 
-    // Backend can expose either dateDebut/dateFin or a single seanceDate
-    const start = s.dateDebut ?? s.seanceDate ?? null
-    const end = s.dateFin ?? null
+  const events = seances.map((s) => {
+    const color = getSeanceColor(s.id)
+
+    // Parse the seanceDate (format: YYYY-MM-DD)
+    const dateStr = s.seanceDate
+
+    // Get time from horaire if available
+    const hDebut = s.horaire?.embHoraire?.hDebut ?? 8
+    const hFin = s.horaire?.embHoraire?.hFin ?? 10
+
+    const startStr = `${dateStr}T${String(hDebut).padStart(2, '0')}:00:00`
+    const endStr = `${dateStr}T${String(hFin).padStart(2, '0')}:00:00`
+
+    // Get matiere names
+    const matiereNames = s.matieres?.map((m: { nom: string }) => m.nom).join(', ') || 'Aucune matière'
+    const nbSurveillants = s.enseignants?.length ?? 0
 
     return {
       id: String(s.id),
-      title,
-      start,
-      end: end || undefined
+      title: `Séance #${s.id}`,
+      start: startStr,
+      end: endStr,
+      backgroundColor: color,
+      borderColor: color,
+      textColor: '#ffffff',
+      extendedProps: {
+        details: `${hDebut}h - ${hFin}h`,
+        matieres: matiereNames,
+        surveillants: `${nbSurveillants} surveillant(s)`,
+        verrouillee: s.verrouillee,
+        passeeExamen: s.passeeExamen
+      }
     }
   })
 
@@ -61,7 +89,6 @@ export function DashboardHome() {
             <p className="text-3xl font-bold">
               {seancesLoading ? '...' : totalSeances}
             </p>
-            <p className="text-xs text-slate-500">{seancesSaturees} séances saturées</p>
           </CardContent>
         </Card>
 
@@ -72,9 +99,6 @@ export function DashboardHome() {
           <CardContent>
             <p className="text-3xl font-bold">
               {enseignantsLoading ? '...' : enseignants.length}
-            </p>
-            <p className="text-xs text-slate-500">
-              {totalSurveillants} surveillants assignés
             </p>
           </CardContent>
         </Card>
@@ -102,6 +126,25 @@ export function DashboardHome() {
             initialView="dayGridMonth"
             events={events}
             height="auto"
+            eventContent={(eventInfo) => (
+              <div className="w-full h-full p-1 text-white overflow-hidden rounded">
+                <div className="font-semibold text-xs truncate">
+                  {eventInfo.event.title}
+                  {eventInfo.event.extendedProps.verrouillee && ' 🔒'}
+                  {eventInfo.event.extendedProps.passeeExamen && ' ✓'}
+                </div>
+                <div className="text-[10px] opacity-90 truncate">{eventInfo.event.extendedProps.details}</div>
+                <div className="text-[10px] opacity-80 truncate">{eventInfo.event.extendedProps.matieres}</div>
+                <div className="text-[10px] opacity-80">{eventInfo.event.extendedProps.surveillants}</div>
+              </div>
+            )}
+            eventDisplay="block"
+            displayEventTime={true}
+            eventTimeFormat={{
+              hour: '2-digit',
+              minute: '2-digit',
+              meridiem: false
+            }}
           />
         </CardContent>
       </Card>

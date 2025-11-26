@@ -14,7 +14,7 @@ export function useMatieres() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['matieres'] })
 
   const addMutation = useMutation({
-    mutationFn: (payload: Partial<Matiere>) => matiereApi.add(payload),
+    mutationFn: (payload: import('@/api/matiere').MatiereDTO) => matiereApi.add(payload),
     onSuccess: () => {
       toast({ title: 'Matière ajoutée' })
       invalidate()
@@ -22,7 +22,10 @@ export function useMatieres() {
   })
 
   const editMutation = useMutation({
-    mutationFn: (payload: Partial<Matiere>) => matiereApi.edit(payload),
+    mutationFn: (payload: { id: number } & import('@/api/matiere').MatiereDTO) => {
+      const { id, ...rest } = payload
+      return matiereApi.edit(id, rest)
+    },
     onSuccess: () => {
       toast({ title: 'Matière mise à jour' })
       invalidate()

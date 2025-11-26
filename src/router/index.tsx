@@ -78,14 +78,7 @@ export function AppRouter() {
             </ProtectedRoute>
           }
         />
-        <Route
-          path="profile"
-          element={
-            <ProtectedRoute allowedRoles={['ADMIN', 'ENSEIGNANT']}>
-              <ProfilePage />
-            </ProtectedRoute>
-          }
-        />
+        <Route path="profile" element={<ProfilePage />} />
       </Route>
 
       <Route path="*" element={<Navigate to="/dashboard" replace />} />

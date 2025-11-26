@@ -16,7 +16,7 @@ export function useEnseignants() {
   const invalidate = () => queryClient.invalidateQueries({ queryKey: ['enseignants'] })
 
   const createMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => enseignantApi.register(payload),
+    mutationFn: (payload: import('@/api/enseignant').EnseignantDTO) => enseignantApi.register(payload),
     onSuccess: () => {
       toast({ title: 'Enseignant créé' })
       invalidate()
@@ -24,7 +24,10 @@ export function useEnseignants() {
   })
 
   const updateMutation = useMutation({
-    mutationFn: (payload: Record<string, unknown>) => enseignantApi.edit(payload),
+    mutationFn: (payload: { id: number } & import('@/api/enseignant').EnseignantDTO) => {
+      const { id, ...rest } = payload
+      return enseignantApi.edit(id, rest)
+    },
     onSuccess: () => {
       toast({ title: 'Enseignant mis à jour' })
       invalidate()

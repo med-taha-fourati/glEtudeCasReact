@@ -6,7 +6,6 @@ import { DashboardHome } from '@/pages/dashboard/DashboardHome'
 import { ProtectedRoute } from './ProtectedRoute'
 import { SeanceListPage } from '@/pages/seances/SeanceListPage'
 import { ProfilePage } from '@/pages/profile/ProfilePage'
-import { VoeuxPage } from '@/pages/voeux/VoeuxPage'
 import { MatieresPage } from '@/pages/matieres/MatieresPage'
 import { GradesPage } from '@/pages/grades/GradesPage'
 import { HorairesPage } from '@/pages/horaires/HorairesPage'
@@ -70,14 +69,6 @@ export function AppRouter() {
           }
         />
 
-        <Route
-          path="voeux"
-          element={
-            <ProtectedRoute allowedRoles={['ENSEIGNANT']}>
-              <VoeuxPage />
-            </ProtectedRoute>
-          }
-        />
         <Route path="profile" element={<ProfilePage />} />
       </Route>
 

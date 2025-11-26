@@ -38,22 +38,12 @@ export function Sidebar() {
             <NavLink to="/seances" className={linkClasses}>
               Séances
             </NavLink>
-            <NavLink to="/profile" className={linkClasses}>
-              Profil
-            </NavLink>
           </>
         )}
 
-        {role === 'ENSEIGNANT' && (
-          <>
-            <NavLink to="/voeux" className={linkClasses}>
-              Vœux
-            </NavLink>
-            <NavLink to="/profile" className={linkClasses}>
-              Profil
-            </NavLink>
-          </>
-        )}
+        <NavLink to="/profile" className={linkClasses}>
+          Profil
+        </NavLink>
       </nav>
     </aside>
   )

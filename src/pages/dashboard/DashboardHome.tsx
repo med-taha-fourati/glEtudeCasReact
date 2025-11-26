@@ -77,7 +77,7 @@ export function DashboardHome() {
             Vision globale sur les séances, enseignants et matières.
           </p>
         </div>
-        <Button onClick={() => navigate('/seances')}>Voir les séances</Button>
+        {/* <Button onClick={() => navigate('/seances')}>Voir les séances</Button> */}
       </div>
 
       <div className="grid gap-4 md:grid-cols-3">

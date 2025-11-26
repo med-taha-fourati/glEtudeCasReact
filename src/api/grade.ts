@@ -2,8 +2,7 @@ import api from './api'
 
 export type Grade = {
   id: number
-  libelle: string
-  coefficient: number
+  grade: number
   chargeSurveillance: number
 }
 

@@ -24,6 +24,10 @@ export function Dialog({ open, onOpenChange, children }: DialogProps) {
   )
 }
 
+export function DialogContent({ children, className }: { children: React.ReactNode; className?: string }) {
+  return <div className={cn('space-y-4', className)}>{children}</div>
+}
+
 export function DialogHeader({ children }: { children: React.ReactNode }) {
   return <div className="mb-4">{children}</div>
 }

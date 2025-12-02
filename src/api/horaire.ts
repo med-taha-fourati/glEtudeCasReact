@@ -1,4 +1,5 @@
 import api from './api'
+import { Seance } from './enseignant'
 
 // Full entity type (returned from backend)
 export type Horaire = {
@@ -6,10 +7,7 @@ export type Horaire = {
     hDebut: number
     hFin: number
   }
-  seances?: Array<{
-    id: number
-    seanceDate: string
-  }>
+  seances?: Array<Seance>
 }
 
 // DTO type (for creation/editing)

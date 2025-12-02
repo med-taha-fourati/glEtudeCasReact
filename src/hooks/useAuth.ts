@@ -8,10 +8,19 @@ export function useLogin() {
   const { toast } = useToast()
 
   return useMutation({
-    mutationFn: (payload: LoginPayload) =>
-      enseignantApi.login(payload).then((res) => res.data as LoginResponse),
-    onSuccess: (data) => {
-      login(data.token, data.username, data.role)
+    mutationFn: async (payload: LoginPayload) => {
+      // Step 1: Login and get token
+      const loginResponse = await enseignantApi.login(payload)
+      const loginData = loginResponse.data as LoginResponse
+
+      // Step 2: Fetch profile to get userId
+      const profileResponse = await enseignantApi.profile(loginData.token)
+      const profile = profileResponse.data
+
+      return { loginData, profile }
+    },
+    onSuccess: ({ loginData, profile }) => {
+      login(loginData.token, profile.username, profile.role, profile.id)
       toast({ title: 'Connexion réussie' })
     },
     onError: () =>

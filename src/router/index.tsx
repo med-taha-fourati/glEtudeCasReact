@@ -10,6 +10,7 @@ import { MatieresPage } from '@/pages/matieres/MatieresPage'
 import { GradesPage } from '@/pages/grades/GradesPage'
 import { HorairesPage } from '@/pages/horaires/HorairesPage'
 import { EnseignantList } from '@/pages/enseignants/EnseignantList'
+import { TimelineSeancePage } from '@/pages/seance/TimelineSeancePage'
 
 export function AppRouter() {
   return (
@@ -27,6 +28,7 @@ export function AppRouter() {
       >
         <Route index element={<Navigate to="/dashboard" replace />} />
         <Route path="dashboard" element={<DashboardHome />} />
+        <Route path="create-seance/:date" element={<TimelineSeancePage />} />
 
         <Route
           path="enseignants"

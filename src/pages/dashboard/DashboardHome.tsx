@@ -6,7 +6,9 @@ import { useMatieres } from '@/hooks/useMatieres'
 import { useNavigate } from 'react-router-dom'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid/index.js'
+import interactionPlugin from '@fullcalendar/interaction'
 import '@fullcalendar/core/index.js'
+import { Seance } from 'api/enseignant'
 
 export function DashboardHome() {
   const navigate = useNavigate()
@@ -122,10 +124,16 @@ export function DashboardHome() {
         </CardHeader>
         <CardContent>
           <FullCalendar
-            plugins={[dayGridPlugin]}
+            plugins={[dayGridPlugin, interactionPlugin]}
             initialView="dayGridMonth"
             events={events}
             height="auto"
+            selectable={true}
+            selectMirror={false}
+            dateClick={(info) => {
+              // Navigate to timeline page
+              navigate(`/create-seance/${info.dateStr}`)
+            }}
             eventContent={(eventInfo) => (
               <div className="w-full h-full p-1 text-white overflow-hidden rounded">
                 <div className="font-semibold text-xs truncate">

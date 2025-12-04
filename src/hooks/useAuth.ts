@@ -20,7 +20,7 @@ export function useLogin() {
       return { loginData, profile }
     },
     onSuccess: ({ loginData, profile }) => {
-      login(loginData.token, profile.username, profile.role, profile.id)
+      login(loginData.token, profile.username, profile.role, profile.id, profile.etatSurveillant)
       toast({ title: 'Connexion réussie' })
     },
     onError: () =>

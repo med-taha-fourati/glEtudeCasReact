@@ -14,6 +14,7 @@ import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Pagination } from '@/components/ui/pagination'
 import { useHoraires } from '@/hooks/useHoraires'
+import { Horaire } from 'api/horaire'
 
 const PAGE_SIZE = 8
 
@@ -60,12 +61,10 @@ export function HorairesPage() {
     setOpen(true)
   }
 
-  const handleEdit = (horaire: any) => {
+  const handleEdit = (horaire: Horaire) => {
     const payload: HoraireForm = {
-      id: horaire.id,
-      libelle: horaire.libelle ?? '',
-      dateDebut: horaire.dateDebut?.slice(0, 16) ?? '',
-      dateFin: horaire.dateFin?.slice(0, 16) ?? ''
+      dateDebut: horaire.embHoraire.hdebut?.slice(0, 16) ?? '',
+      dateFin: horaire.embHoraire.hfin?.slice(0, 16) ?? ''
     }
     setEditing(payload)
     form.reset(payload)
@@ -109,7 +108,6 @@ export function HorairesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Libellé</TableHead>
               <TableHead>Début</TableHead>
               <TableHead>Fin</TableHead>
               <TableHead className="text-right">Actions</TableHead>

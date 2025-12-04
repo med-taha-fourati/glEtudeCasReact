@@ -4,19 +4,47 @@ import { useSeances } from '@/hooks/useSeances'
 import { useEnseignants } from '@/hooks/useEnseignants'
 import { useMatieres } from '@/hooks/useMatieres'
 import { useNavigate } from 'react-router-dom'
+import { useAuthStore } from '@/store/auth'
+import { useState, useEffect, useMemo } from 'react'
 import FullCalendar from '@fullcalendar/react'
 import dayGridPlugin from '@fullcalendar/daygrid/index.js'
 import interactionPlugin from '@fullcalendar/interaction'
 import '@fullcalendar/core/index.js'
 import { Seance } from 'api/enseignant'
 
+const FILTER_STORAGE_KEY = 'dashboard.showOnlyMySurveillances'
+
 export function DashboardHome() {
   const navigate = useNavigate()
+  const { userId, etatSurveillant, role } = useAuthStore()
   const { data: seances = [], isLoading: seancesLoading } = useSeances()
   const { data: enseignants = [], isLoading: enseignantsLoading } = useEnseignants()
   const { data: matieres = [], isLoading: matieresLoading } = useMatieres()
 
-  const totalSeances = seances.length
+  // Filter state with localStorage persistence
+  const [showOnlyMySurveillances, setShowOnlyMySurveillances] = useState(() => {
+    const saved = localStorage.getItem(FILTER_STORAGE_KEY)
+    return saved === 'true'
+  })
+
+  // Save preference to localStorage
+  useEffect(() => {
+    localStorage.setItem(FILTER_STORAGE_KEY, String(showOnlyMySurveillances))
+  }, [showOnlyMySurveillances])
+
+  // Filter seances based on checkbox
+  const filteredSeances = useMemo(() => {
+    if (!showOnlyMySurveillances || !userId) {
+      return seances
+    }
+
+    return seances.filter((s: typeof seances[0]) =>
+      s.enseignants?.some((e: typeof s.enseignants[0]) => e.id === userId)
+    )
+  }, [seances, showOnlyMySurveillances, userId])
+
+  const totalSeances = filteredSeances.length
+
 
   // Generate vibrant, distinct colors for each seance
   const getSeanceColor = (id: number) => {
@@ -35,40 +63,87 @@ export function DashboardHome() {
     return colors[id % colors.length]
   }
 
-  const events = seances.map((s) => {
-    const color = getSeanceColor(s.id)
 
-    // Parse the seanceDate (format: YYYY-MM-DD)
-    const dateStr = s.seanceDate
-
-    // Get time from horaire if available
-    const hDebut = s.horaire?.embHoraire?.hDebut ?? 8
-    const hFin = s.horaire?.embHoraire?.hFin ?? 10
-
-    const startStr = `${dateStr}T${String(hDebut).padStart(2, '0')}:00:00`
-    const endStr = `${dateStr}T${String(hFin).padStart(2, '0')}:00:00`
-
-    // Get matiere names
-    const matiereNames = s.matieres?.map((m: { nom: string }) => m.nom).join(', ') || 'Aucune matière'
-    const nbSurveillants = s.enseignants?.length ?? 0
-
-    return {
-      id: String(s.id),
-      title: `Séance #${s.id}`,
-      start: startStr,
-      end: endStr,
-      backgroundColor: color,
-      borderColor: color,
-      textColor: '#ffffff',
-      extendedProps: {
-        details: `${hDebut}h - ${hFin}h`,
-        matieres: matiereNames,
-        surveillants: `${nbSurveillants} surveillant(s)`,
-        verrouillee: s.verrouillee,
-        passeeExamen: s.passeeExamen
-      }
+  // Group seances by date
+  const seancesByDate = filteredSeances.reduce((acc: Record<string, typeof seances>, s: typeof seances[0]) => {
+    const date = s.seanceDate
+    if (!acc[date]) {
+      acc[date] = []
     }
+    acc[date].push(s)
+    return acc
+  }, {} as Record<string, typeof seances>)
+
+  // Create events with limit of 3 per day
+  const events = Object.entries(seancesByDate).flatMap(([date, daySeances]: [string, typeof seances]) => {
+    const sortedSeances = daySeances.sort((a: typeof seances[0], b: typeof seances[0]) => {
+      const aStart = a.horaire?.embHoraire?.hdebut ?? 8
+      const bStart = b.horaire?.embHoraire?.hdebut ?? 8
+      return aStart - bStart
+    })
+
+    // Take first 3 seances
+    const visibleSeances = sortedSeances.slice(0, 3)
+    const hiddenCount = sortedSeances.length - 3
+
+    const visibleEvents = visibleSeances.map((s: typeof seances[0]) => {
+      const color = getSeanceColor(s.id)
+      const hDebut = s.horaire?.embHoraire?.hdebut ?? 8
+      const hFin = s.horaire?.embHoraire?.hfin ?? 10
+
+      const startStr = `${s.seanceDate}T${String(hDebut).padStart(2, '0')}:00:00`
+      const endStr = `${s.seanceDate}T${String(hFin).padStart(2, '0')}:00:00`
+
+      // Get matiere names (limit to 2)
+      const matieresList = s.matieres?.map((m: { nom: string }) => m.nom) || []
+      const matiereNames = matieresList.slice(0, 2).join(', ')
+      const extraMatieres = matieresList.length > 2 ? ` +${matieresList.length - 2}` : ''
+
+      // Count actual enseignants
+      const nbSurveillants = s.enseignants?.length ?? 0
+
+      return {
+        id: String(s.id),
+        title: `Séance #${s.id}`,
+        start: startStr,
+        end: endStr,
+        backgroundColor: color,
+        borderColor: color,
+        textColor: '#ffffff',
+        extendedProps: {
+          details: `${hDebut}h - ${hFin}h`,
+          matieres: matiereNames + extraMatieres,
+          surveillants: `Surveillants: ${nbSurveillants}`,
+          verrouillee: s.verrouillee,
+          passeeExamen: s.passeeExamen
+        }
+      }
+    })
+
+    // Add "show more" indicator if there are hidden seances
+    if (hiddenCount > 0) {
+      const showMoreEvent = {
+        id: `more-${date}`,
+        title: `+${hiddenCount} séance${hiddenCount > 1 ? 's' : ''}`,
+        start: `${date}T16:00:00`,
+        end: `${date}T16:30:00`,
+        backgroundColor: '#64748b',
+        borderColor: '#64748b',
+        textColor: '#ffffff',
+        display: 'background' as const,
+        extendedProps: {
+          isMoreIndicator: true,
+          details: 'Cliquez pour voir toutes les séances',
+          matieres: '',
+          surveillants: ''
+        }
+      }
+      return [...visibleEvents, showMoreEvent]
+    }
+
+    return visibleEvents
   })
+
 
   return (
     <div className="space-y-4">
@@ -79,6 +154,26 @@ export function DashboardHome() {
             Vision globale sur les séances, enseignants et matières.
           </p>
         </div>
+
+        {/* Filter checkbox - for SURVEILLANT users */}
+        {etatSurveillant === 'SURVEILLANT' && (
+          <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
+            <input
+              type="checkbox"
+              id="filter-my-surveillances"
+              checked={showOnlyMySurveillances}
+              onChange={(e) => setShowOnlyMySurveillances(e.target.checked)}
+              className="w-4 h-4 cursor-pointer accent-blue-600"
+              aria-label="Afficher seulement mes surveillances"
+            />
+            <label
+              htmlFor="filter-my-surveillances"
+              className="text-sm font-medium cursor-pointer select-none"
+            >
+              Afficher seulement mes surveillances
+            </label>
+          </div>
+        )}
         {/* <Button onClick={() => navigate('/seances')}>Voir les séances</Button> */}
       </div>
 

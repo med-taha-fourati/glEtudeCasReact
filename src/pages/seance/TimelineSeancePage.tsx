@@ -1,19 +1,24 @@
-import { useState, useRef, useEffect } from 'react'
+import { useState, useRef, useEffect, useMemo } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
+import { Badge } from '@/components/ui/badge'
+import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
-import { useMatieres } from '@/hooks/useMatieres'
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
 import { useSeances } from '@/hooks/useSeances'
+import { useMatieres } from '@/hooks/useMatieres'
 import { useHoraires } from '@/hooks/useHoraires'
-import { horaireApi } from '@/api/horaire'
+import { useEnseignants } from '@/hooks/useEnseignants'
 import { seanceApi, SeanceDTO } from '@/api/seance'
+import { horaireApi } from '@/api/horaire'
 import { matiereApi, MatiereDTO } from '@/api/matiere'
 import { enseignantApi } from '@/api/enseignant'
 import { useAuthStore } from '@/store/auth'
 import { useToast } from '@/components/ui/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
+import { AlertCircle, Info, Users } from 'lucide-react'
 
 const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16]
 const MIN_HOUR = 8
@@ -31,12 +36,17 @@ type TimeBlock = {
 export function TimelineSeancePage() {
     const { date } = useParams<{ date: string }>()
     const navigate = useNavigate()
+    const { data: allSeances = [], deleteMutation } = useSeances()
     const { data: matieres = [] } = useMatieres()
-    const { data: allSeances = [] } = useSeances()
-    const { data: allHoraires = [] } = useHoraires()
-    const { userId } = useAuthStore()
+    const { data: horaires = [] } = useHoraires()
+    const { data: enseignants = [] } = useEnseignants()
+    const { userId, role, etatSurveillant } = useAuthStore()
     const { toast } = useToast()
     const queryClient = useQueryClient()
+
+    const isAdmin = role === 'ADMIN'
+    const isSurveillant = etatSurveillant === 'SURVEILLANT'
+    const isReadOnly = !isAdmin && !isSurveillant
 
     const timelineRef = useRef<HTMLDivElement>(null)
 
@@ -52,63 +62,58 @@ export function TimelineSeancePage() {
     })
 
     // Filter seances for this date
-    const dateSeances = allSeances.filter(s => s.seanceDate === date)
+    const dateSeances = allSeances.filter((s: typeof allSeances[0]) => s.seanceDate === date)
 
-    // Time blocks state
+    // ADMIN MODE STATE
     const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([])
     const [selectedBlockId, setSelectedBlockId] = useState<number | 'new' | null>(null)
-
-    // Drag state
     const [isDragging, setIsDragging] = useState(false)
     const [dragType, setDragType] = useState<'create' | 'resize-start' | 'resize-end' | null>(null)
     const [dragBlockId, setDragBlockId] = useState<number | 'new' | null>(null)
 
+    // ENSEIGNANT MODE STATE
+    const [selectedSeanceId, setSelectedSeanceId] = useState<number | null>(null)
+
     // Form state
     const [selectedMatiereId, setSelectedMatiereId] = useState<string>('')
+    const [assignedSurveillants, setAssignedSurveillants] = useState<number[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
 
-    // Mode detection (CREATE or EDIT)
-    const [mode, setMode] = useState<'CREATE' | 'EDIT' | null>(null)
+    // Get eligible surveillants (filtered by etatSurveillant and matiere ownership)
+    const eligibleSurveillants = useMemo(() => {
+        if (!isAdmin) return []
 
-    // Initialize time blocks from existing seances
+        const surveillants = enseignants.filter((e: typeof enseignants[0]) =>
+            e.etatSurveillant === 'SURVEILLANT'
+        )
+
+        if (!selectedMatiereId) return surveillants
+
+        const selectedMatiere = matieres.find((m: typeof matieres[0]) => m.id === parseInt(selectedMatiereId))
+        if (!selectedMatiere) return surveillants
+
+        // Filter out enseignants who own this matiere
+        return surveillants.filter((e: typeof enseignants[0]) =>
+            !e.matieres?.some((m: typeof e.matieres[0]) => m.id === selectedMatiere.id)
+        )
+    }, [isAdmin, enseignants, selectedMatiereId, matieres])
+
+    // Initialize time blocks from existing seances (ADMIN MODE)
     useEffect(() => {
-        const blocks: TimeBlock[] = dateSeances.map(s => ({
+        if (!isAdmin) return
+
+        const blocks: TimeBlock[] = dateSeances.map((s: typeof dateSeances[0]) => ({
             id: s.id,
             seanceId: s.id,
-            hDebut: s.horaire?.embHoraire?.hDebut ?? MIN_HOUR,
-            hFin: s.horaire?.embHoraire?.hFin ?? MIN_HOUR + 2,
+            hDebut: s.horaire?.embHoraire?.hdebut ?? MIN_HOUR,
+            hFin: s.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2,
             isNew: false,
             matiereId: s.matieres?.[0]?.id
         }))
 
         setTimeBlocks(blocks)
-    }, [dateSeances.length, date])
-
-    // When a block is selected, determine CREATE or EDIT mode
-    useEffect(() => {
-        if (!selectedBlockId) {
-            setMode(null)
-            setSelectedMatiereId('')
-            return
-        }
-
-        const block = timeBlocks.find(b => b.id === selectedBlockId)
-        if (!block) return
-
-        if (block.isNew) {
-            // New block → CREATE mode
-            setMode('CREATE')
-            setSelectedMatiereId('')
-        } else {
-            // Existing block → EDIT mode
-            setMode('EDIT')
-            // Preload matiere if exists
-            if (block.matiereId) {
-                setSelectedMatiereId(String(block.matiereId))
-            }
-        }
-    }, [selectedBlockId, timeBlocks])
+    }, [dateSeances.length, date, isAdmin])
 
     // Convert pixel to hour with snapping
     const pixelToHour = (pixelX: number): number => {
@@ -123,8 +128,10 @@ export function TimelineSeancePage() {
         return Math.max(MIN_HOUR, Math.min(MAX_HOUR, Math.round(rawHour)))
     }
 
-    // Mouse down on timeline (create new)
+    // ADMIN: Mouse down on timeline (create new)
     const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
+        if (!isAdmin) return
+
         const hour = pixelToHour(e.clientX)
 
         const newBlock: TimeBlock = {
@@ -141,22 +148,25 @@ export function TimelineSeancePage() {
         setIsDragging(true)
     }
 
-    // Mouse down on block edge (resize)
+    // ADMIN: Mouse down on block edge (resize)
     const handleBlockEdgeMouseDown = (e: React.MouseEvent, blockId: number | 'new', edge: 'start' | 'end') => {
+        if (!isAdmin) return
+
         e.stopPropagation()
         setDragBlockId(blockId)
         setDragType(edge === 'start' ? 'resize-start' : 'resize-end')
         setIsDragging(true)
     }
 
-    // Mouse down on block body (select)
+    // ADMIN: Mouse down on block body (select)
     const handleBlockClick = (blockId: number | 'new') => {
+        if (!isAdmin) return
         setSelectedBlockId(blockId)
     }
 
-    // Mouse move
+    // ADMIN: Mouse move
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
-        if (!isDragging || !dragBlockId) return
+        if (!isAdmin || !isDragging || !dragBlockId) return
 
         const hour = pixelToHour(e.clientX)
 
@@ -175,33 +185,71 @@ export function TimelineSeancePage() {
         }))
     }
 
-    // Mouse up
+    // ADMIN: Mouse up
     const handleMouseUp = () => {
+        if (!isAdmin) return
+
         setIsDragging(false)
         setDragType(null)
         setDragBlockId(null)
     }
 
-    // Delete block
-    const handleDeleteBlock = (blockId: number | 'new') => {
-        setTimeBlocks(prev => prev.filter(b => b.id !== blockId))
-        if (selectedBlockId === blockId) {
-            setSelectedBlockId(null)
-            setSelectedMatiereId('')
+    // ADMIN: Delete block
+    const handleDeleteBlock = async (blockId: number | 'new') => {
+        if (!isAdmin) return
+
+        if (blockId === 'new') {
+            setTimeBlocks(prev => prev.filter(b => b.id !== blockId))
+            if (selectedBlockId === blockId) {
+                setSelectedBlockId(null)
+                setSelectedMatiereId('')
+            }
+            return
+        }
+
+        try {
+            await deleteMutation.mutateAsync(blockId as number)
+            setTimeBlocks(prev => prev.filter(b => b.id !== blockId))
+            if (selectedBlockId === blockId) {
+                setSelectedBlockId(null)
+                setSelectedMatiereId('')
+            }
+            toast({ title: 'Séance supprimée' })
+        } catch (error: any) {
+            toast({
+                title: 'Erreur',
+                description: 'Impossible de supprimer la séance',
+                variant: 'destructive'
+            })
         }
     }
 
-    // Get selected block
-    const selectedBlock = timeBlocks.find(b => b.id === selectedBlockId)
+    // ENSEIGNANT: Handle checkbox selection
+    const handleSelectSeance = (seanceId: number) => {
+        if (!isSurveillant) return
+        setSelectedSeanceId(prev => prev === seanceId ? null : seanceId)
+    }
 
-    // Validate form
-    const validate = (): string[] => {
-        const validationErrors: string[] = []
+    // Get selected block or seance
+    const selectedBlock = isAdmin ? timeBlocks.find(b => b.id === selectedBlockId) : null
+    const selectedSeance = isSurveillant ? dateSeances.find((s: typeof dateSeances[0]) => s.id === selectedSeanceId) : null
 
-        if (!selectedBlock) {
-            validationErrors.push('Veuillez sélectionner ou créer une plage horaire')
-            return validationErrors
+    // Calculate block position and width
+    const getBlockStyle = (hDebut: number, hFin: number) => {
+        const startPercent = ((hDebut - MIN_HOUR) / (MAX_HOUR - MIN_HOUR)) * 100
+        const widthPercent = ((hFin - hDebut) / (MAX_HOUR - MIN_HOUR)) * 100
+
+        return {
+            left: `${startPercent}%`,
+            width: `${widthPercent}%`
         }
+    }
+
+    // ADMIN: Submit seance creation/edit
+    const handleAdminSubmit = async () => {
+        if (!isAdmin || !selectedBlock) return
+
+        const validationErrors: string[] = []
 
         if (!selectedMatiereId) {
             validationErrors.push('Veuillez sélectionner une matière')
@@ -219,127 +267,95 @@ export function TimelineSeancePage() {
             validationErrors.push('Heure de fin doit être supérieure à heure de début')
         }
 
-        return validationErrors
-    }
-
-    // MAIN WORKFLOW: Horaire → Seance → Matiere
-    const handleSubmit = async () => {
-        const validationErrors = validate()
-
         if (validationErrors.length > 0) {
             setErrors(validationErrors)
             return
         }
 
-        if (!selectedBlock || !userId) return
-
         setErrors([])
         setIsSubmitting(true)
 
         try {
-            const matiere = matieres.find(m => m.id === parseInt(selectedMatiereId))
+            const matiere = matieres.find((m: typeof matieres[0]) => m.id === parseInt(selectedMatiereId))
             if (!matiere) throw new Error('Matière non trouvée')
 
             const { hDebut, hFin } = selectedBlock
 
-            // STEP 1: RESOLVE HORAIRE (find existing or create new)
-            console.log('Step 1: Resolving horaire...', { hDebut, hFin })
-            let horaireResolved = false
-
+            // Create/ensure horaire exists
             try {
                 await horaireApi.get(hDebut, hFin)
-                horaireResolved = true
-                console.log('Horaire exists')
             } catch {
-                console.log('Horaire not found, creating...')
                 await horaireApi.add({ hDebut, hFin })
-                horaireResolved = true
-                console.log('Horaire created')
             }
 
-            if (!horaireResolved) {
-                throw new Error('Failed to resolve horaire')
+            // Create or update seance
+            const payload: SeanceDTO = {
+                jour: annee,
+                mois,
+                annee: jour,
+                horaireHDebut: hDebut,
+                horaireHFin: hFin
             }
 
-            // STEP 2: HANDLE SEANCE (CREATE or EDIT mode)
-            let seanceId: number
+            if (selectedBlock.isNew) {
+                const response = await seanceApi.add(payload)
+                const seanceId = response.data.id
 
-            if (mode === 'CREATE') {
-                // CREATE MODE: Create new seance
-                console.log('Step 2: Creating new seance...')
+                const matierePayload: MatiereDTO = {
+                    nom: matiere.nom,
+                    nbPaquets: matiere.nbPaquets,
+                    seanceId
+                }
+                await matiereApi.edit(matiere.id, matierePayload)
 
-                const seancePayload: SeanceDTO = {
-                    jour: annee,
-                    mois,
-                    annee: jour,
-                    horaireHDebut: hDebut,
-                    horaireHFin: hFin
+                // Assign surveillants
+                for (const enseignantId of assignedSurveillants) {
+                    try {
+                        await seanceApi.soumettreVoeu(enseignantId, seanceId)
+                    } catch (error) {
+                        console.error(`Failed to assign surveillant ${enseignantId}:`, error)
+                    }
                 }
 
-                const seanceResponse = await seanceApi.add(seancePayload)
-                seanceId = seanceResponse.data.id
-                console.log('Seance created:', seanceId)
+                if (assignedSurveillants.length > 0) {
+                    await enseignantApi.recalcCharges()
+                }
 
+                toast({ title: 'Séance créée avec succès' })
             } else {
-                // EDIT MODE: Update existing seance
-                console.log('Step 2: Updating existing seance...')
+                await seanceApi.edit(selectedBlock.seanceId!, payload)
 
-                if (!selectedBlock.seanceId) {
-                    throw new Error('Seance ID not found')
+                const matierePayload: MatiereDTO = {
+                    nom: matiere.nom,
+                    nbPaquets: matiere.nbPaquets,
+                    seanceId: selectedBlock.seanceId!
+                }
+                await matiereApi.edit(matiere.id, matierePayload)
+
+                // Assign surveillants
+                for (const enseignantId of assignedSurveillants) {
+                    try {
+                        await seanceApi.soumettreVoeu(enseignantId, selectedBlock.seanceId!)
+                    } catch (error) {
+                        console.error(`Failed to assign surveillant ${enseignantId}:`, error)
+                    }
                 }
 
-                const seancePayload: SeanceDTO = {
-                    jour: annee,
-                    mois,
-                    annee: jour,
-                    horaireHDebut: hDebut,
-                    horaireHFin: hFin
+                if (assignedSurveillants.length > 0) {
+                    await enseignantApi.recalcCharges()
                 }
 
-                await seanceApi.edit(selectedBlock.seanceId, seancePayload)
-                seanceId = selectedBlock.seanceId
-                console.log('Seance updated:', seanceId)
+                toast({ title: 'Séance modifiée avec succès' })
             }
 
-            // STEP 3: LINK MATIERE TO SEANCE
-            console.log('Step 3: Linking matiere to seance...')
-            const matierePayload: MatiereDTO = {
-                nom: matiere.nom,
-                nbPaquets: matiere.nbPaquets,
-                seanceId
-            }
-            await matiereApi.edit(matiere.id, matierePayload)
-            console.log('Matiere linked')
-
-            // STEP 4: SUBMIT VOEU (only in CREATE mode)
-            if (mode === 'CREATE') {
-                console.log('Step 4: Submitting voeu...')
-                await seanceApi.soumettreVoeu(userId, seanceId)
-                console.log('Voeu submitted')
-            }
-
-            // STEP 5: RECALCULATE CHARGES
-            console.log('Step 5: Recalculating charges...')
-            await enseignantApi.recalcCharges()
-            console.log('Charges recalculated')
-
-            // Success
-            toast({
-                title: mode === 'CREATE' ? 'Vœu soumis avec succès!' : 'Vœu modifié avec succès!',
-                description: 'La séance a été ' + (mode === 'CREATE' ? 'créée' : 'mise à jour')
-            })
-
-            // Refresh data
             queryClient.invalidateQueries({ queryKey: ['seances'] })
             queryClient.invalidateQueries({ queryKey: ['horaires'] })
             queryClient.invalidateQueries({ queryKey: ['matieres'] })
             queryClient.invalidateQueries({ queryKey: ['enseignants'] })
 
-            // Navigate back
             navigate('/dashboard')
 
         } catch (error: any) {
-            console.error('Workflow failed:', error)
             toast({
                 title: 'Erreur',
                 description: error.message || 'Une erreur est survenue',
@@ -350,177 +366,372 @@ export function TimelineSeancePage() {
         }
     }
 
-    // Calculate block position and width
-    const getBlockStyle = (block: TimeBlock) => {
-        const startPercent = ((block.hDebut - MIN_HOUR) / (MAX_HOUR - MIN_HOUR)) * 100
-        const widthPercent = ((block.hFin - block.hDebut) / (MAX_HOUR - MIN_HOUR)) * 100
+    // ENSEIGNANT: Submit voeu
+    const handleEnseignantSubmit = async () => {
+        if (!isSurveillant || !selectedSeanceId || !userId) return
 
-        return {
-            left: `${startPercent}%`,
-            width: `${widthPercent}%`
+        setIsSubmitting(true)
+
+        try {
+            await seanceApi.soumettreVoeu(userId, selectedSeanceId)
+            await enseignantApi.recalcCharges()
+
+            toast({
+                title: 'Vœu soumis avec succès!',
+                description: 'Vous avez été assigné à cette séance.'
+            })
+
+            queryClient.invalidateQueries({ queryKey: ['seances'] })
+            queryClient.invalidateQueries({ queryKey: ['enseignants'] })
+
+            navigate('/dashboard')
+
+        } catch (error: any) {
+            toast({
+                title: 'Erreur',
+                description: error.response?.data?.message || 'Une erreur est survenue',
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSubmitting(false)
         }
     }
 
+    // READ-ONLY MODE (PAS_SURVEILLANT)
+    if (isReadOnly) {
+        return (
+            <div className="container mx-auto p-4 max-w-6xl space-y-6">
+                {/* Header */}
+                <div className="flex items-center justify-between">
+                    <div>
+                        <h1 className="text-2xl font-bold">Séances du jour</h1>
+                        <p className="text-slate-600 capitalize">{formattedDate}</p>
+                    </div>
+                    <Badge variant="secondary" className="text-sm">
+                        <Info className="w-4 h-4 mr-1" />
+                        Accès en lecture seule
+                    </Badge>
+                </div>
+
+                {/* Alert */}
+                <Alert>
+                    <AlertCircle className="h-4 w-4" />
+                    <AlertTitle>Vous n'avez pas les droits pour cette action.</AlertTitle>
+                    <AlertDescription>
+                        Contactez un administrateur pour devenir surveillant et pouvoir vous assigner aux séances.
+                    </AlertDescription>
+                </Alert>
+
+                {/* Read-only timeline */}
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Séances disponibles</CardTitle>
+                        <p className="text-sm text-slate-500">
+                            Vue en lecture seule des séances de la journée
+                        </p>
+                    </CardHeader>
+                    <CardContent>
+                        {dateSeances.length === 0 ? (
+                            <div className="text-center py-12 text-slate-500">
+                                <p className="text-lg">Aucune séance disponible pour cette date.</p>
+                            </div>
+                        ) : (
+                            <div className="space-y-2">
+                                {/* Hour header */}
+                                <div className="flex">
+                                    <div className="w-32 flex-shrink-0" />
+                                    <div
+                                        ref={timelineRef}
+                                        className="relative flex-1 h-8 bg-slate-50"
+                                    >
+                                        {HOURS.map((hour, index) => (
+                                            <div
+                                                key={hour}
+                                                className="absolute top-0 bottom-0 flex flex-col items-start"
+                                                style={{ left: `${(index / (HOURS.length - 1)) * 100}%` }}
+                                            >
+                                                <div className="h-full border-l border-slate-300" />
+                                                <span className="absolute -bottom-5 -translate-x-1/2 text-xs font-medium text-slate-600">
+                                                    {hour}h
+                                                </span>
+                                            </div>
+                                        ))}
+                                    </div>
+                                    <div className="w-16 flex-shrink-0" />
+                                </div>
+
+                                {/* Read-only seance blocks */}
+                                {dateSeances.map((seance: typeof dateSeances[0]) => {
+                                    const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
+                                    const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
+                                    const matiereName = seance.matieres?.[0]?.nom || 'Matière inconnue'
+
+                                    return (
+                                        <div key={seance.id} className="flex items-center">
+                                            <div className="w-32 flex-shrink-0 pr-4">
+                                                <div className="text-sm font-medium text-slate-700">
+                                                    Séance #{seance.id}
+                                                </div>
+                                                <div className="text-xs text-slate-500 truncate">
+                                                    {matiereName}
+                                                </div>
+                                            </div>
+
+                                            <div className="relative flex-1 h-12 bg-slate-100 rounded">
+                                                <div
+                                                    className="absolute top-1 bottom-1 rounded bg-slate-400"
+                                                    style={getBlockStyle(hDebut, hFin)}
+                                                >
+                                                    <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold">
+                                                        {hDebut}h - {hFin}h
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="w-16 flex-shrink-0 pl-2 text-xs text-slate-500">
+                                                {seance.enseignants?.length ?? 0} surv.
+                                            </div>
+                                        </div>
+                                    )
+                                })}
+                            </div>
+                        )}
+                    </CardContent>
+                </Card>
+
+                {/* Back button */}
+                <div className="flex justify-end">
+                    <Button variant="outline" onClick={() => navigate('/dashboard')}>
+                        Retour au tableau de bord
+                    </Button>
+                </div>
+            </div>
+        )
+    }
+
+    // ADMIN & SURVEILLANT MODES
     return (
         <div className="container mx-auto p-4 max-w-6xl space-y-6">
-            {/* Header */}
-            <div>
-                <h1 className="text-2xl font-bold">Gérer les séances</h1>
-                <p className="text-slate-600 capitalize">{formattedDate}</p>
+            {/* Header with permission badge */}
+            <div className="flex items-center justify-between">
+                <div>
+                    <h1 className="text-2xl font-bold">
+                        {isAdmin ? 'Gérer les séances' : 'Sélectionner une séance'}
+                    </h1>
+                    <p className="text-slate-600 capitalize">{formattedDate}</p>
+                </div>
+                <div className="text-right">
+                    <Badge variant={isAdmin ? 'default' : 'secondary'} className="mb-1">
+                        {isAdmin ? 'Administrateur' : 'Surveillant'}
+                    </Badge>
+                    <p className="text-xs text-slate-500">
+                        {isAdmin
+                            ? 'Vous pouvez créer, modifier et supprimer des séances'
+                            : 'Vous pouvez vous assigner aux séances existantes'}
+                    </p>
+                </div>
             </div>
 
             {/* Timeline */}
             <Card>
                 <CardHeader>
-                    <CardTitle>Plages horaires</CardTitle>
+                    <CardTitle>{isAdmin ? 'Plages horaires' : 'Séances disponibles'}</CardTitle>
                     <p className="text-sm text-slate-500">
-                        Créez ou modifiez les plages horaires. Sélectionnez une plage pour choisir la matière.
+                        {isAdmin
+                            ? 'Créez ou modifiez les plages horaires en faisant glisser sur la timeline'
+                            : 'Sélectionnez une séance pour soumettre votre vœu de surveillance'}
                     </p>
                 </CardHeader>
                 <CardContent>
-                    <div className="space-y-2">
-                        {/* Hour header */}
-                        <div className="flex">
-                            <div className="w-32 flex-shrink-0" />
-                            <div
-                                ref={timelineRef}
-                                className="relative flex-1 h-8 bg-slate-50"
-                            >
-                                {HOURS.map((hour, index) => (
-                                    <div
-                                        key={hour}
-                                        className="absolute top-0 bottom-0 flex flex-col items-start"
-                                        style={{ left: `${(index / (HOURS.length - 1)) * 100}%` }}
-                                    >
-                                        <div className="h-full border-l border-slate-300" />
-                                        <span className="absolute -bottom-5 -translate-x-1/2 text-xs font-medium text-slate-600">
-                                            {hour}h
-                                        </span>
-                                    </div>
-                                ))}
-                            </div>
-                            <div className="w-16 flex-shrink-0" />
+                    {!isAdmin && dateSeances.length === 0 ? (
+                        <div className="text-center py-12 text-slate-500">
+                            <p className="text-lg">Aucune séance disponible pour cette date.</p>
                         </div>
-
-                        {/* Existing seances */}
-                        {timeBlocks.filter(b => !b.isNew).map((block) => (
-                            <div key={block.id} className="flex items-center">
-                                <div className="w-32 flex-shrink-0 pr-4">
-                                    <span className="text-sm font-medium text-slate-700">
-                                        Séance #{block.seanceId}
-                                    </span>
+                    ) : (
+                        <div className="space-y-2">
+                            {/* Hour header */}
+                            <div className="flex">
+                                {!isAdmin && <div className="w-8 flex-shrink-0" />}
+                                <div className="w-32 flex-shrink-0" />
+                                <div
+                                    ref={timelineRef}
+                                    className="relative flex-1 h-8 bg-slate-50"
+                                >
+                                    {HOURS.map((hour, index) => (
+                                        <div
+                                            key={hour}
+                                            className="absolute top-0 bottom-0 flex flex-col items-start"
+                                            style={{ left: `${(index / (HOURS.length - 1)) * 100}%` }}
+                                        >
+                                            <div className="h-full border-l border-slate-300" />
+                                            <span className="absolute -bottom-5 -translate-x-1/2 text-xs font-medium text-slate-600">
+                                                {hour}h
+                                            </span>
+                                        </div>
+                                    ))}
                                 </div>
-                                <div className="relative flex-1 h-12 bg-slate-100 rounded">
-                                    <div
-                                        className={`absolute top-1 bottom-1 rounded cursor-pointer transition-all ${selectedBlockId === block.id
-                                                ? 'bg-blue-500 ring-2 ring-blue-600'
-                                                : 'bg-blue-400 hover:bg-blue-500'
-                                            }`}
-                                        style={getBlockStyle(block)}
-                                        onClick={() => handleBlockClick(block.id)}
-                                    >
+                                <div className="w-16 flex-shrink-0" />
+                            </div>
+
+                            {/* ADMIN MODE */}
+                            {isAdmin && (
+                                <>
+                                    {timeBlocks.filter(b => !b.isNew).map((block) => (
+                                        <div key={block.id} className="flex items-center">
+                                            <div className="w-32 flex-shrink-0 pr-4">
+                                                <span className="text-sm font-medium text-slate-700">
+                                                    Séance #{block.seanceId}
+                                                </span>
+                                            </div>
+                                            <div className="relative flex-1 h-12 bg-slate-100 rounded">
+                                                <div
+                                                    className={`absolute top-1 bottom-1 rounded cursor-pointer transition-all ${selectedBlockId === block.id
+                                                        ? 'bg-blue-500 ring-2 ring-blue-600'
+                                                        : 'bg-blue-400 hover:bg-blue-500'
+                                                        }`}
+                                                    style={getBlockStyle(block.hDebut, block.hFin)}
+                                                    onClick={() => handleBlockClick(block.id)}
+                                                >
+                                                    <div
+                                                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
+                                                        onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'start')}
+                                                    />
+                                                    <div
+                                                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
+                                                        onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'end')}
+                                                    />
+                                                    <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold pointer-events-none">
+                                                        {block.hDebut}h - {block.hFin}h
+                                                    </div>
+                                                </div>
+                                            </div>
+                                            <div className="w-16 flex-shrink-0 pl-2">
+                                                <button
+                                                    onClick={() => handleDeleteBlock(block.id)}
+                                                    className="text-red-500 hover:text-red-700 text-sm font-bold"
+                                                >
+                                                    ✕
+                                                </button>
+                                            </div>
+                                        </div>
+                                    ))}
+
+                                    <div className="flex items-center">
+                                        <div className="w-32 flex-shrink-0 pr-4">
+                                            <span className="text-sm font-medium text-green-700">
+                                                + Nouvelle séance
+                                            </span>
+                                        </div>
                                         <div
-                                            className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
-                                            onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'start')}
-                                        />
-                                        <div
-                                            className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
-                                            onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'end')}
-                                        />
-                                        <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold pointer-events-none">
-                                            {block.hDebut}h - {block.hFin}h
+                                            className="relative flex-1 h-12 bg-green-50 rounded cursor-crosshair border-2 border-dashed border-green-300"
+                                            onMouseDown={handleTimelineMouseDown}
+                                            onMouseMove={handleMouseMove}
+                                            onMouseUp={handleMouseUp}
+                                            onMouseLeave={handleMouseUp}
+                                        >
+                                            {timeBlocks.filter(b => b.isNew).map((block) => (
+                                                <div
+                                                    key={block.id}
+                                                    className={`absolute top-1 bottom-1 rounded cursor-pointer ${selectedBlockId === block.id
+                                                        ? 'bg-green-500 ring-2 ring-green-600'
+                                                        : 'bg-green-400 hover:bg-green-500'
+                                                        }`}
+                                                    style={getBlockStyle(block.hDebut, block.hFin)}
+                                                    onClick={() => handleBlockClick(block.id)}
+                                                >
+                                                    <div
+                                                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-green-700"
+                                                        onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'start')}
+                                                    />
+                                                    <div
+                                                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-green-700"
+                                                        onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'end')}
+                                                    />
+                                                    <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold pointer-events-none">
+                                                        {block.hDebut}h - {block.hFin}h
+                                                    </div>
+                                                </div>
+                                            ))}
+                                        </div>
+                                        <div className="w-16 flex-shrink-0 pl-2">
+                                            {timeBlocks.some(b => b.isNew) && (
+                                                <button
+                                                    onClick={() => handleDeleteBlock('new')}
+                                                    className="text-red-500 hover:text-red-700 text-sm font-bold"
+                                                >
+                                                    ✕
+                                                </button>
+                                            )}
                                         </div>
                                     </div>
-                                </div>
-                                <div className="w-16 flex-shrink-0 pl-2">
-                                    <button
-                                        onClick={() => handleDeleteBlock(block.id)}
-                                        className="text-red-500 hover:text-red-700 text-sm"
-                                    >
-                                        ✕
-                                    </button>
-                                </div>
-                            </div>
-                        ))}
+                                </>
+                            )}
 
-                        {/* New seance row */}
-                        <div className="flex items-center">
-                            <div className="w-32 flex-shrink-0 pr-4">
-                                <span className="text-sm font-medium text-green-700">
-                                    + Nouvelle séance
-                                </span>
-                            </div>
-                            <div
-                                className="relative flex-1 h-12 bg-green-50 rounded cursor-crosshair border-2 border-dashed border-green-300"
-                                onMouseDown={handleTimelineMouseDown}
-                                onMouseMove={handleMouseMove}
-                                onMouseUp={handleMouseUp}
-                                onMouseLeave={handleMouseUp}
-                            >
-                                {timeBlocks.filter(b => b.isNew).map((block) => (
-                                    <div
-                                        key={block.id}
-                                        className={`absolute top-1 bottom-1 rounded cursor-pointer ${selectedBlockId === block.id
-                                                ? 'bg-green-500 ring-2 ring-green-600'
-                                                : 'bg-green-400 hover:bg-green-500'
-                                            }`}
-                                        style={getBlockStyle(block)}
-                                        onClick={() => handleBlockClick(block.id)}
-                                    >
-                                        <div
-                                            className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-green-700"
-                                            onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'start')}
-                                        />
-                                        <div
-                                            className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-green-700"
-                                            onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'end')}
-                                        />
-                                        <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold pointer-events-none">
-                                            {block.hDebut}h - {block.hFin}h
+                            {/* ENSEIGNANT MODE */}
+                            {isSurveillant && !isAdmin && dateSeances.map((seance: typeof dateSeances[0]) => {
+                                const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
+                                const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
+                                const matiereName = seance.matieres?.[0]?.nom || 'Matière inconnue'
+                                const isSelected = selectedSeanceId === seance.id
+
+                                return (
+                                    <div key={seance.id} className="flex items-center">
+                                        <div className="w-8 flex-shrink-0 flex items-center justify-center">
+                                            <input
+                                                type="checkbox"
+                                                checked={isSelected}
+                                                onChange={() => handleSelectSeance(seance.id)}
+                                                className="w-4 h-4 cursor-pointer accent-blue-600"
+                                                aria-label={`Sélectionner la séance ${seance.id}`}
+                                            />
                                         </div>
+
+                                        <div className="w-32 flex-shrink-0 pr-4">
+                                            <div className="text-sm font-medium text-slate-700">
+                                                Séance #{seance.id}
+                                            </div>
+                                            <div className="text-xs text-slate-500 truncate">
+                                                {matiereName}
+                                            </div>
+                                        </div>
+
+                                        <div className="relative flex-1 h-12 bg-slate-100 rounded">
+                                            <div
+                                                className={`absolute top-1 bottom-1 rounded transition-all cursor-pointer ${isSelected
+                                                    ? 'bg-blue-600 ring-2 ring-blue-700'
+                                                    : 'bg-blue-400'
+                                                    }`}
+                                                style={getBlockStyle(hDebut, hFin)}
+                                                onClick={() => handleSelectSeance(seance.id)}
+                                            >
+                                                <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold">
+                                                    {hDebut}h - {hFin}h
+                                                </div>
+                                            </div>
+                                        </div>
+                                        <div className="w-16 flex-shrink-0" />
                                     </div>
-                                ))}
-                            </div>
-                            <div className="w-16 flex-shrink-0 pl-2">
-                                {timeBlocks.some(b => b.isNew) && (
-                                    <button
-                                        onClick={() => handleDeleteBlock('new')}
-                                        className="text-red-500 hover:text-red-700 text-sm"
-                                    >
-                                        ✕
-                                    </button>
-                                )}
-                            </div>
+                                )
+                            })}
                         </div>
-                    </div>
+                    )}
                 </CardContent>
             </Card>
 
-            {/* Form - Only shown when block is selected */}
-            {selectedBlock && mode && (
+            {/* Form - ADMIN MODE */}
+            {isAdmin && selectedBlock && (
                 <Card>
                     <CardHeader>
                         <CardTitle>
-                            {mode === 'CREATE' ? 'Nouvelle séance' : 'Modifier la séance'}
+                            {selectedBlock.isNew ? 'Nouvelle séance' : 'Modifier la séance'}
                         </CardTitle>
-                        <p className="text-sm text-slate-500">
-                            {mode === 'CREATE'
-                                ? 'Créez une nouvelle séance et soumettez votre vœu'
-                                : 'Modifiez la séance existante'}
-                        </p>
                     </CardHeader>
                     <CardContent className="space-y-4">
-                        {/* Mode indicator */}
-                        <div className={`${mode === 'CREATE' ? 'bg-green-50 border-green-200' : 'bg-blue-50 border-blue-200'} border rounded-lg p-3`}>
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
                             <p className="text-sm font-medium">
-                                Mode: <strong>{mode === 'CREATE' ? 'CRÉATION' : 'MODIFICATION'}</strong>
-                            </p>
-                            <p className="text-xs text-slate-600 mt-1">
                                 Plage horaire: {selectedBlock.hDebut}h00 - {selectedBlock.hFin}h00
                             </p>
                         </div>
 
-                        {/* Matiere selection - ALWAYS VISIBLE */}
                         <div className="space-y-2">
                             <label className="text-sm font-medium">Matière *</label>
                             <Select value={selectedMatiereId} onValueChange={setSelectedMatiereId}>
@@ -528,7 +739,7 @@ export function TimelineSeancePage() {
                                     <SelectValue placeholder="Sélectionnez une matière" />
                                 </SelectTrigger>
                                 <SelectContent>
-                                    {matieres.map((matiere) => (
+                                    {matieres.map((matiere: typeof matieres[0]) => (
                                         <SelectItem key={matiere.id} value={String(matiere.id)}>
                                             {matiere.nom} ({matiere.nbPaquets} paquets)
                                         </SelectItem>
@@ -537,14 +748,13 @@ export function TimelineSeancePage() {
                             </Select>
                         </div>
 
-                        {/* Hour inputs (synchronized with timeline) */}
                         <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
                                 <label className="text-sm font-medium">Heure de début</label>
                                 <Input
                                     type="number"
                                     value={selectedBlock.hDebut}
-                                    onChange={(e) => {
+                                    onChange={(e: any) => {
                                         const newValue = parseInt(e.target.value) || MIN_HOUR
                                         setTimeBlocks(prev => prev.map(b =>
                                             b.id === selectedBlockId ? { ...b, hDebut: newValue } : b
@@ -559,7 +769,7 @@ export function TimelineSeancePage() {
                                 <Input
                                     type="number"
                                     value={selectedBlock.hFin}
-                                    onChange={(e) => {
+                                    onChange={(e: any) => {
                                         const newValue = parseInt(e.target.value) || MIN_HOUR + 1
                                         setTimeBlocks(prev => prev.map(b =>
                                             b.id === selectedBlockId ? { ...b, hFin: newValue } : b
@@ -571,30 +781,136 @@ export function TimelineSeancePage() {
                             </div>
                         </div>
 
-                        {/* Validation errors */}
-                        {errors.length > 0 && (
-                            <div className="bg-red-50 border border-red-200 rounded-lg p-3">
-                                <ul className="text-sm text-red-700 space-y-1">
-                                    {errors.map((error, index) => (
-                                        <li key={index}>• {error}</li>
-                                    ))}
-                                </ul>
+                        {/* Surveillant Assignment */}
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-slate-600" />
+                                <label className="text-sm font-medium">Assigner des surveillants</label>
+                                <Badge variant="secondary" className="text-xs">
+                                    {assignedSurveillants.length} sélectionné{assignedSurveillants.length !== 1 ? 's' : ''}
+                                </Badge>
                             </div>
-                        )}
 
-                        {/* Workflow info */}
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                            <p className="text-sm text-blue-900">
-                                <strong>Cette action va:</strong>
-                            </p>
-                            <ul className="text-sm text-blue-900 list-disc list-inside mt-1 space-y-1">
-                                <li>Résoudre ou créer l'horaire {selectedBlock.hDebut}h00 - {selectedBlock.hFin}h00</li>
-                                <li>{mode === 'CREATE' ? 'Créer une nouvelle séance' : 'Mettre à jour la séance existante'}</li>
-                                <li>Lier la matière sélectionnée</li>
-                                {mode === 'CREATE' && <li>Soumettre votre vœu de surveillance</li>}
-                                <li>Recalculer les charges</li>
-                            </ul>
+                            {eligibleSurveillants.length === 0 ? (
+                                <Alert>
+                                    <Info className="h-4 w-4" />
+                                    <AlertDescription>
+                                        {!selectedMatiereId
+                                            ? 'Sélectionnez une matière pour voir les surveillants éligibles'
+                                            : 'Aucun surveillant éligible pour cette matière'}
+                                    </AlertDescription>
+                                </Alert>
+                            ) : (
+                                <div className="border rounded-lg p-3 max-h-60 overflow-y-auto space-y-2 bg-slate-50">
+                                    {eligibleSurveillants.map((ens: typeof enseignants[0]) => {
+                                        const isSelected = assignedSurveillants.includes(ens.id)
+                                        const ownsMatiere = selectedMatiereId && matieres.find((m: typeof matieres[0]) =>
+                                            m.id === parseInt(selectedMatiereId)
+                                        ) && ens.matieres?.some((m: typeof ens.matieres[0]) =>
+                                            m.id === parseInt(selectedMatiereId)
+                                        )
+
+                                        return (
+                                            <label
+                                                key={ens.id}
+                                                className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${ownsMatiere
+                                                    ? 'opacity-50 cursor-not-allowed bg-red-50'
+                                                    : isSelected
+                                                        ? 'bg-blue-100 hover:bg-blue-200'
+                                                        : 'hover:bg-slate-100'
+                                                    }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    disabled={!!ownsMatiere}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setAssignedSurveillants(prev => [...prev, ens.id])
+                                                        } else {
+                                                            setAssignedSurveillants(prev => prev.filter(id => id !== ens.id))
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4 cursor-pointer accent-blue-600"
+                                                    aria-label={`Assigner ${ens.nom} ${ens.prenom}`}
+                                                />
+                                                <div className="flex-1">
+                                                    <div className="text-sm font-medium">
+                                                        {ens.nom} {ens.prenom}
+                                                    </div>
+                                                    {ownsMatiere && (
+                                                        <div className="text-xs text-red-600">
+                                                            ⚠️ Ne peut surveiller sa propre matière
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {isSelected && !ownsMatiere && (
+                                                    <Badge variant="default" className="text-xs">
+                                                        Assigné
+                                                    </Badge>
+                                                )}
+                                            </label>
+                                        )
+                                    })}
+                                </div>
+                            )}
                         </div>
+
+                        {errors.length > 0 && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Erreurs de validation</AlertTitle>
+                                <AlertDescription>
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {errors.map((error, index) => (
+                                            <li key={index}>{error}</li>
+                                        ))}
+                                    </ul>
+                                </AlertDescription>
+                            </Alert>
+                        )}
+                    </CardContent>
+                </Card>
+            )}
+
+            {/* Form - ENSEIGNANT MODE */}
+            {isSurveillant && !isAdmin && selectedSeance && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>Séance sélectionnée</CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <div className="grid grid-cols-2 gap-4">
+                            <div>
+                                <p className="text-sm text-slate-500">Séance</p>
+                                <p className="font-medium">#{selectedSeance.id}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-slate-500">Matière</p>
+                                <p className="font-medium">{selectedSeance.matieres?.[0]?.nom || 'Non définie'}</p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-slate-500">Horaire</p>
+                                <p className="font-medium">
+                                    {selectedSeance.horaire?.embHoraire?.hdebut}h00 - {selectedSeance.horaire?.embHoraire?.hfin}h00
+                                </p>
+                            </div>
+                            <div>
+                                <p className="text-sm text-slate-500">Date</p>
+                                <p className="font-medium capitalize">{formattedDate}</p>
+                            </div>
+                        </div>
+
+                        <Alert>
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>En soumettant ce vœu:</AlertTitle>
+                            <AlertDescription>
+                                <ul className="list-disc list-inside mt-1 space-y-1">
+                                    <li>Vous serez assigné à cette séance de surveillance</li>
+                                    <li>Vos charges de surveillance seront recalculées</li>
+                                </ul>
+                            </AlertDescription>
+                        </Alert>
                     </CardContent>
                 </Card>
             )}
@@ -605,14 +921,14 @@ export function TimelineSeancePage() {
                     Annuler
                 </Button>
                 <Button
-                    onClick={handleSubmit}
-                    disabled={isSubmitting || !selectedBlock || !mode}
+                    onClick={isAdmin ? handleAdminSubmit : handleEnseignantSubmit}
+                    disabled={isSubmitting || (isAdmin ? !selectedBlock : !selectedSeanceId)}
                 >
                     {isSubmitting
                         ? 'En cours...'
-                        : mode === 'CREATE'
-                            ? 'Soumettre un vœu'
-                            : 'Modifier le vœu'}
+                        : isAdmin
+                            ? (selectedBlock?.isNew ? 'Créer la séance' : 'Modifier la séance')
+                            : 'Soumettre un vœu'}
                 </Button>
             </div>
         </div>

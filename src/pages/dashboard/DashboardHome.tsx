@@ -34,16 +34,25 @@ export function DashboardHome() {
     localStorage.setItem(FILTER_STORAGE_KEY, String(showOnlyMySurveillances))
   }, [showOnlyMySurveillances])
 
-  // Filter seances based on checkbox
+  // NEW LOGIC: Use enseignants as source of truth for filtering
   const filteredSeances = useMemo(() => {
-    if (!showOnlyMySurveillances || !userId) {
+    if (!showOnlyMySurveillances || !userId || !enseignants.length) {
       return seances
     }
 
-    return seances.filter((s: typeof seances[0]) =>
-      s.enseignants?.some((e: typeof s.enseignants[0]) => e.id === userId)
-    )
-  }, [seances, showOnlyMySurveillances, userId])
+    // Find current logged-in enseignant
+    const currentEnseignant = enseignants.find((e: typeof enseignants[0]) => e.id === userId)
+
+    if (!currentEnseignant || !currentEnseignant.seances) {
+      return []
+    }
+
+    // Extract séance IDs from enseignant's assigned séances
+    const mySeanceIds = new Set(currentEnseignant.seances.map((s: typeof currentEnseignant.seances[0]) => s.id))
+
+    // Filter to only show séances that are in the enseignant's list
+    return seances.filter((s: typeof seances[0]) => mySeanceIds.has(s.id))
+  }, [seances, showOnlyMySurveillances, userId, enseignants])
 
   const totalSeances = filteredSeances.length
 
@@ -64,6 +73,18 @@ export function DashboardHome() {
     }
   }, [userId, role])
 
+  // NEW FUNCTION: Count enseignants assigned to a séance by iterating through all enseignants
+  const countEnseignantsForSeance = (seanceId: number): number => {
+    if (!enseignants.length) return 0
+
+    let count = 0
+    enseignants.forEach((enseignant: typeof enseignants[0]) => {
+      if (enseignant.seances?.some((s: typeof enseignant.seances[0]) => s.id === seanceId)) {
+        count++
+      }
+    })
+    return count
+  }
 
   // Generate vibrant, distinct colors for each seance
   const getSeanceColor = (id: number) => {
@@ -77,7 +98,7 @@ export function DashboardHome() {
       '#14B8A6', // teal
       '#F97316', // orange
       '#6366F1', // indigo
-      '#84CC16', // lime
+      '#84CC16', // lime',
     ]
     return colors[id % colors.length]
   }
@@ -118,8 +139,8 @@ export function DashboardHome() {
       const matiereNames = matieresList.slice(0, 2).join(', ')
       const extraMatieres = matieresList.length > 2 ? ` +${matieresList.length - 2}` : ''
 
-      // Count actual enseignants
-      const nbSurveillants = s.enseignants?.length ?? 0
+      // NEW: Count enseignants using the source of truth
+      const nbSurveillants = countEnseignantsForSeance(s.id)
 
       return {
         id: String(s.id),

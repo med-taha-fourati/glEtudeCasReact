@@ -11,6 +11,8 @@ import dayGridPlugin from '@fullcalendar/daygrid/index.js'
 import interactionPlugin from '@fullcalendar/interaction'
 import '@fullcalendar/core/index.js'
 import { Seance } from 'api/enseignant'
+import { seanceApi } from '@/api/seance'
+import { enseignantApi } from '@/api/enseignant'
 
 const FILTER_STORAGE_KEY = 'dashboard.showOnlyMySurveillances'
 
@@ -44,6 +46,21 @@ export function DashboardHome() {
   }, [seances, showOnlyMySurveillances, userId])
 
   const totalSeances = filteredSeances.length
+
+  // Fetch charge surveillance (M) for the current user
+  const [chargeSurveillance, setChargeSurveillance] = useState<number | null>(null)
+
+  useEffect(() => {
+    if (userId && role === 'ENSEIGNANT') {
+      enseignantApi.calculerChargeSurveillance(userId)
+        .then(response => {
+          setChargeSurveillance(response.data.m)
+        })
+        .catch(error => {
+          console.error('Failed to fetch charge surveillance:', error)
+        })
+    }
+  }, [userId, role])
 
 
   // Generate vibrant, distinct colors for each seance
@@ -114,6 +131,7 @@ export function DashboardHome() {
           details: `${hDebut}h - ${hFin}h`,
           matieres: matiereNames + extraMatieres,
           surveillants: `Surveillants: ${nbSurveillants}`,
+          seanceId: s.id,
           verrouillee: s.verrouillee,
           passeeExamen: s.passeeExamen
         }
@@ -144,6 +162,42 @@ export function DashboardHome() {
     return visibleEvents
   })
 
+
+  // Event content component that fetches required surveillants
+  const EventContent = ({ eventInfo }: { eventInfo: any }) => {
+    const [requiredN, setRequiredN] = useState<number | null>(null)
+    const seanceId = eventInfo.event.extendedProps.seanceId
+
+    useEffect(() => {
+      if (seanceId) {
+        seanceApi.calculerSurveillantsRequis(seanceId)
+          .then(response => {
+            setRequiredN(response.data.n)
+          })
+          .catch(error => {
+            console.error('Failed to fetch required surveillants:', error)
+          })
+      }
+    }, [seanceId])
+
+    const nbAssigned = eventInfo.event.extendedProps.surveillants.match(/\d+/)?.[0] || '0'
+    const nbRequired = requiredN !== null ? requiredN : '...'
+
+    return (
+      <div className="w-full h-full p-1 text-white overflow-hidden rounded">
+        <div className="font-semibold text-xs truncate">
+          {eventInfo.event.title}
+          {eventInfo.event.extendedProps.verrouillee && ' 🔒'}
+          {eventInfo.event.extendedProps.passeeExamen && ' ✓'}
+        </div>
+        <div className="text-[10px] opacity-90 truncate">{eventInfo.event.extendedProps.details}</div>
+        <div className="text-[10px] opacity-80 truncate">{eventInfo.event.extendedProps.matieres}</div>
+        <div className="text-[10px] opacity-80 font-medium">
+          👥 {nbAssigned}/{nbRequired}
+        </div>
+      </div>
+    )
+  }
 
   return (
     <div className="space-y-4">
@@ -177,10 +231,10 @@ export function DashboardHome() {
         {/* <Button onClick={() => navigate('/seances')}>Voir les séances</Button> */}
       </div>
 
-      <div className="grid gap-4 md:grid-cols-3">
+      <div className={`grid ${role == "ENSEIGNANT" ? 'gap-4 md:grid-cols-2 lg:grid-cols-4' : 'gap-3 md:grid-cols-2 lg:grid-cols-3'}`}>
         <Card>
           <CardHeader>
-            <CardTitle>Séances programmées</CardTitle>
+            <CardTitle>Séances</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">
@@ -191,7 +245,7 @@ export function DashboardHome() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Enseignants actifs</CardTitle>
+            <CardTitle>Enseignants</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">
@@ -202,7 +256,7 @@ export function DashboardHome() {
 
         <Card>
           <CardHeader>
-            <CardTitle>Matières suivies</CardTitle>
+            <CardTitle>Matières</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">
@@ -211,6 +265,21 @@ export function DashboardHome() {
             <p className="text-xs text-slate-500">Nombre total de matières dans le système</p>
           </CardContent>
         </Card>
+
+        {/* Show M card only for enseignants */}
+        {role === 'ENSEIGNANT' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Ma charge</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-blue-600">
+                {chargeSurveillance !== null ? chargeSurveillance : '...'}
+              </p>
+              <p className="text-xs text-slate-500">Charge de surveillance (M)</p>
+            </CardContent>
+          </Card>
+        )}
       </div>
 
       <Card>
@@ -229,18 +298,7 @@ export function DashboardHome() {
               // Navigate to timeline page
               navigate(`/create-seance/${info.dateStr}`)
             }}
-            eventContent={(eventInfo) => (
-              <div className="w-full h-full p-1 text-white overflow-hidden rounded">
-                <div className="font-semibold text-xs truncate">
-                  {eventInfo.event.title}
-                  {eventInfo.event.extendedProps.verrouillee && ' 🔒'}
-                  {eventInfo.event.extendedProps.passeeExamen && ' ✓'}
-                </div>
-                <div className="text-[10px] opacity-90 truncate">{eventInfo.event.extendedProps.details}</div>
-                <div className="text-[10px] opacity-80 truncate">{eventInfo.event.extendedProps.matieres}</div>
-                <div className="text-[10px] opacity-80">{eventInfo.event.extendedProps.surveillants}</div>
-              </div>
-            )}
+            eventContent={(eventInfo) => <EventContent eventInfo={eventInfo} />}
             eventDisplay="block"
             displayEventTime={true}
             eventTimeFormat={{

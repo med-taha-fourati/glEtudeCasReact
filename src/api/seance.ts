@@ -34,6 +34,12 @@ export type SeanceDTO = {
   horaireHFin: number
 }
 
+// Response type for calculer surveillants requis
+export type CalculerNResponse = {
+  seanceId: number
+  n: number
+}
+
 export const seanceApi = {
   fetchAll: () => api.get<Seance[]>('/seance/fetchAll'),
   fetchDisponibles: () => api.get<Seance[]>('/seance/disponibles'),
@@ -44,5 +50,6 @@ export const seanceApi = {
   soumettreVoeu: (enseignantId: number, seanceId: number) => api.post(`/seance/soumettre-voeu?enseignantId=${enseignantId}&seanceId=${seanceId}`),
   verrouiller: (verrouiller: boolean) => api.post(`/seance/verrouiller?verrouiller=${verrouiller}`),
   affecterAutomatiquement: () => api.post('/seance/affecter-automatiquement'),
-  terminerExamen: (id: number) => api.post(`/seance/terminer-examen?seanceId=${id}`)
+  terminerExamen: (id: number) => api.post(`/seance/terminer-examen?seanceId=${id}`),
+  calculerSurveillantsRequis: (seanceId: number) => api.get<CalculerNResponse>(`/seance/calculer-surveillants-requis?seanceId=${seanceId}`)
 }

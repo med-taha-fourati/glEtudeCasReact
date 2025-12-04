@@ -63,6 +63,12 @@ export type EnseignantDTO = {
   etatSurveillant: 'PAS_SURVEILLANT' | 'SURVEILLANT'
 }
 
+// Response type for charge surveillance calculation
+export type CalculerMResponse = {
+  enseignantId: number
+  m: number
+}
+
 export const enseignantApi = {
   login: (payload: LoginPayload) => api.post<LoginResponse>('/enseignant/login', payload),
   register: (payload: EnseignantDTO) => api.post<Enseignant>('/enseignant/register', payload),
@@ -70,5 +76,6 @@ export const enseignantApi = {
   fetchAll: () => api.get<Enseignant[]>('/enseignant/fetch'),
   edit: (id: number, payload: EnseignantDTO) => api.put<Enseignant>(`/enseignant/edit?id=${id}`, payload),
   delete: (id: number) => api.delete(`/enseignant/delete?id=${id}`),
-  recalcCharges: () => api.post('/enseignant/recalculer-charges')
+  recalcCharges: () => api.post('/enseignant/recalculer-charges'),
+  calculerChargeSurveillance: (enseignantId: number) => api.get<CalculerMResponse>(`/enseignant/calculer-charge-surveillance?enseignantId=${enseignantId}`)
 }

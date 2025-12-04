@@ -194,6 +194,41 @@ export function TimelineSeancePage() {
         setDragBlockId(null)
     }
 
+    // Track which block we've loaded to prevent re-loading
+    const loadedBlockIdRef = useRef<number | 'new' | null>(null)
+
+    // Load assigned surveillants when selecting a block
+    useEffect(() => {
+        // Only run if we're selecting a different block
+        if (loadedBlockIdRef.current === selectedBlockId) return
+
+        loadedBlockIdRef.current = selectedBlockId
+
+        if (!isAdmin || !selectedBlockId) {
+            setAssignedSurveillants([])
+            setSelectedMatiereId('')
+            return
+        }
+
+        const block = timeBlocks.find(b => b.id === selectedBlockId)
+        if (!block || block.isNew) {
+            setAssignedSurveillants([])
+            return
+        }
+
+        // Find the seance and load its assigned surveillants
+        const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === block.seanceId)
+        if (seance) {
+            const assignedIds = seance.enseignants?.map((e: typeof seance.enseignants[0]) => e.id) || []
+            setAssignedSurveillants(assignedIds)
+
+            // Also load the matiere
+            if (seance.matieres?.[0]) {
+                setSelectedMatiereId(String(seance.matieres[0].id))
+            }
+        }
+    }, [selectedBlockId, isAdmin, timeBlocks, dateSeances])
+
     // ADMIN: Delete block
     const handleDeleteBlock = async (blockId: number | 'new') => {
         if (!isAdmin) return
@@ -575,45 +610,59 @@ export function TimelineSeancePage() {
                             {/* ADMIN MODE */}
                             {isAdmin && (
                                 <>
-                                    {timeBlocks.filter(b => !b.isNew).map((block) => (
-                                        <div key={block.id} className="flex items-center">
-                                            <div className="w-32 flex-shrink-0 pr-4">
-                                                <span className="text-sm font-medium text-slate-700">
-                                                    Séance #{block.seanceId}
-                                                </span>
-                                            </div>
-                                            <div className="relative flex-1 h-12 bg-slate-100 rounded">
-                                                <div
-                                                    className={`absolute top-1 bottom-1 rounded cursor-pointer transition-all ${selectedBlockId === block.id
-                                                        ? 'bg-blue-500 ring-2 ring-blue-600'
-                                                        : 'bg-blue-400 hover:bg-blue-500'
-                                                        }`}
-                                                    style={getBlockStyle(block.hDebut, block.hFin)}
-                                                    onClick={() => handleBlockClick(block.id)}
-                                                >
+                                    {timeBlocks.filter(b => !b.isNew).map((block) => {
+                                        // Get assigned surveillants for this block
+                                        const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === block.seanceId)
+                                        const surveillantCount = seance?.enseignants?.length || 0
+
+                                        return (
+                                            <div key={block.id} className="flex items-center">
+                                                <div className="w-32 flex-shrink-0 pr-4">
+                                                    <div className="text-sm font-medium text-slate-700">
+                                                        Séance #{block.seanceId}
+                                                    </div>
+                                                    {surveillantCount > 0 && (
+                                                        <div className="flex items-center gap-1 mt-0.5">
+                                                            <Users className="w-3 h-3 text-blue-600" />
+                                                            <span className="text-xs text-blue-600 font-medium">
+                                                                {surveillantCount}
+                                                            </span>
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                <div className="relative flex-1 h-12 bg-slate-100 rounded">
                                                     <div
-                                                        className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
-                                                        onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'start')}
-                                                    />
-                                                    <div
-                                                        className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
-                                                        onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'end')}
-                                                    />
-                                                    <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold pointer-events-none">
-                                                        {block.hDebut}h - {block.hFin}h
+                                                        className={`absolute top-1 bottom-1 rounded cursor-pointer transition-all ${selectedBlockId === block.id
+                                                            ? 'bg-blue-500 ring-2 ring-blue-600'
+                                                            : 'bg-blue-400 hover:bg-blue-500'
+                                                            }`}
+                                                        style={getBlockStyle(block.hDebut, block.hFin)}
+                                                        onClick={() => handleBlockClick(block.id)}
+                                                    >
+                                                        <div
+                                                            className="absolute left-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
+                                                            onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'start')}
+                                                        />
+                                                        <div
+                                                            className="absolute right-0 top-0 bottom-0 w-2 cursor-ew-resize hover:bg-blue-700"
+                                                            onMouseDown={(e) => handleBlockEdgeMouseDown(e, block.id, 'end')}
+                                                        />
+                                                        <div className="absolute inset-0 flex items-center justify-center text-white text-xs font-semibold pointer-events-none">
+                                                            {block.hDebut}h - {block.hFin}h
+                                                        </div>
                                                     </div>
                                                 </div>
+                                                <div className="w-16 flex-shrink-0 pl-2">
+                                                    <button
+                                                        onClick={() => handleDeleteBlock(block.id)}
+                                                        className="text-red-500 hover:text-red-700 text-sm font-bold"
+                                                    >
+                                                        ✕
+                                                    </button>
+                                                </div>
                                             </div>
-                                            <div className="w-16 flex-shrink-0 pl-2">
-                                                <button
-                                                    onClick={() => handleDeleteBlock(block.id)}
-                                                    className="text-red-500 hover:text-red-700 text-sm font-bold"
-                                                >
-                                                    ✕
-                                                </button>
-                                            </div>
-                                        </div>
-                                    ))}
+                                        )
+                                    })}
 
                                     <div className="flex items-center">
                                         <div className="w-32 flex-shrink-0 pr-4">
@@ -713,207 +762,212 @@ export function TimelineSeancePage() {
                                 )
                             })}
                         </div>
-                    )}
-                </CardContent>
-            </Card>
+                    )
+                    }
+                </CardContent >
+            </Card >
 
             {/* Form - ADMIN MODE */}
-            {isAdmin && selectedBlock && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>
-                            {selectedBlock.isNew ? 'Nouvelle séance' : 'Modifier la séance'}
-                        </CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-4">
-                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                            <p className="text-sm font-medium">
-                                Plage horaire: {selectedBlock.hDebut}h00 - {selectedBlock.hFin}h00
-                            </p>
-                        </div>
+            {
+                isAdmin && selectedBlock && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>
+                                {selectedBlock.isNew ? 'Nouvelle séance' : 'Modifier la séance'}
+                            </CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-4">
+                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                                <p className="text-sm font-medium">
+                                    Plage horaire: {selectedBlock.hDebut}h00 - {selectedBlock.hFin}h00
+                                </p>
+                            </div>
 
-                        <div className="space-y-2">
-                            <label className="text-sm font-medium">Matière *</label>
-                            <Select value={selectedMatiereId} onValueChange={setSelectedMatiereId}>
-                                <SelectTrigger>
-                                    <SelectValue placeholder="Sélectionnez une matière" />
-                                </SelectTrigger>
-                                <SelectContent>
-                                    {matieres.map((matiere: typeof matieres[0]) => (
-                                        <SelectItem key={matiere.id} value={String(matiere.id)}>
-                                            {matiere.nom} ({matiere.nbPaquets} paquets)
-                                        </SelectItem>
-                                    ))}
-                                </SelectContent>
-                            </Select>
-                        </div>
-
-                        <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Heure de début</label>
-                                <Input
-                                    type="number"
-                                    value={selectedBlock.hDebut}
-                                    onChange={(e: any) => {
-                                        const newValue = parseInt(e.target.value) || MIN_HOUR
-                                        setTimeBlocks(prev => prev.map(b =>
-                                            b.id === selectedBlockId ? { ...b, hDebut: newValue } : b
-                                        ))
-                                    }}
-                                    min={MIN_HOUR}
-                                    max={MAX_HOUR - 1}
-                                />
+                                <label className="text-sm font-medium">Matière *</label>
+                                <Select value={selectedMatiereId} onValueChange={setSelectedMatiereId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Sélectionnez une matière" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {matieres.map((matiere: typeof matieres[0]) => (
+                                            <SelectItem key={matiere.id} value={String(matiere.id)}>
+                                                {matiere.nom} ({matiere.nbPaquets} paquets)
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
                             </div>
+
+                            <div className="grid grid-cols-2 gap-4">
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Heure de début</label>
+                                    <Input
+                                        type="number"
+                                        value={selectedBlock.hDebut}
+                                        onChange={(e: any) => {
+                                            const newValue = parseInt(e.target.value) || MIN_HOUR
+                                            setTimeBlocks(prev => prev.map(b =>
+                                                b.id === selectedBlockId ? { ...b, hDebut: newValue } : b
+                                            ))
+                                        }}
+                                        min={MIN_HOUR}
+                                        max={MAX_HOUR - 1}
+                                    />
+                                </div>
+                                <div className="space-y-2">
+                                    <label className="text-sm font-medium">Heure de fin</label>
+                                    <Input
+                                        type="number"
+                                        value={selectedBlock.hFin}
+                                        onChange={(e: any) => {
+                                            const newValue = parseInt(e.target.value) || MIN_HOUR + 1
+                                            setTimeBlocks(prev => prev.map(b =>
+                                                b.id === selectedBlockId ? { ...b, hFin: newValue } : b
+                                            ))
+                                        }}
+                                        min={MIN_HOUR + 1}
+                                        max={MAX_HOUR}
+                                    />
+                                </div>
+                            </div>
+
+                            {/* Surveillant Assignment */}
                             <div className="space-y-2">
-                                <label className="text-sm font-medium">Heure de fin</label>
-                                <Input
-                                    type="number"
-                                    value={selectedBlock.hFin}
-                                    onChange={(e: any) => {
-                                        const newValue = parseInt(e.target.value) || MIN_HOUR + 1
-                                        setTimeBlocks(prev => prev.map(b =>
-                                            b.id === selectedBlockId ? { ...b, hFin: newValue } : b
-                                        ))
-                                    }}
-                                    min={MIN_HOUR + 1}
-                                    max={MAX_HOUR}
-                                />
-                            </div>
-                        </div>
+                                <div className="flex items-center gap-2">
+                                    <Users className="w-4 h-4 text-slate-600" />
+                                    <label className="text-sm font-medium">Assigner des surveillants</label>
+                                    <Badge variant="secondary" className="text-xs">
+                                        {assignedSurveillants.length} sélectionné{assignedSurveillants.length !== 1 ? 's' : ''}
+                                    </Badge>
+                                </div>
 
-                        {/* Surveillant Assignment */}
-                        <div className="space-y-2">
-                            <div className="flex items-center gap-2">
-                                <Users className="w-4 h-4 text-slate-600" />
-                                <label className="text-sm font-medium">Assigner des surveillants</label>
-                                <Badge variant="secondary" className="text-xs">
-                                    {assignedSurveillants.length} sélectionné{assignedSurveillants.length !== 1 ? 's' : ''}
-                                </Badge>
+                                {eligibleSurveillants.length === 0 ? (
+                                    <Alert>
+                                        <Info className="h-4 w-4" />
+                                        <AlertDescription>
+                                            {!selectedMatiereId
+                                                ? 'Sélectionnez une matière pour voir les surveillants éligibles'
+                                                : 'Aucun surveillant éligible pour cette matière'}
+                                        </AlertDescription>
+                                    </Alert>
+                                ) : (
+                                    <div className="border rounded-lg p-3 max-h-60 overflow-y-auto space-y-2 bg-slate-50">
+                                        {eligibleSurveillants.map((ens: typeof enseignants[0]) => {
+                                            const isSelected = assignedSurveillants.includes(ens.id)
+                                            const ownsMatiere = selectedMatiereId && matieres.find((m: typeof matieres[0]) =>
+                                                m.id === parseInt(selectedMatiereId)
+                                            ) && ens.matieres?.some((m: typeof ens.matieres[0]) =>
+                                                m.id === parseInt(selectedMatiereId)
+                                            )
+
+                                            return (
+                                                <label
+                                                    key={ens.id}
+                                                    className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${ownsMatiere
+                                                        ? 'opacity-50 cursor-not-allowed bg-red-50'
+                                                        : isSelected
+                                                            ? 'bg-blue-100 hover:bg-blue-200'
+                                                            : 'hover:bg-slate-100'
+                                                        }`}
+                                                >
+                                                    <input
+                                                        type="checkbox"
+                                                        checked={isSelected}
+                                                        disabled={!!ownsMatiere}
+                                                        onChange={(e) => {
+                                                            if (e.target.checked) {
+                                                                setAssignedSurveillants(prev => [...prev, ens.id])
+                                                            } else {
+                                                                setAssignedSurveillants(prev => prev.filter(id => id !== ens.id))
+                                                            }
+                                                        }}
+                                                        className="w-4 h-4 cursor-pointer accent-blue-600"
+                                                        aria-label={`Assigner ${ens.nom} ${ens.prenom}`}
+                                                    />
+                                                    <div className="flex-1">
+                                                        <div className="text-sm font-medium">
+                                                            {ens.nom} {ens.prenom}
+                                                        </div>
+                                                        {ownsMatiere && (
+                                                            <div className="text-xs text-red-600">
+                                                                ⚠️ Ne peut surveiller sa propre matière
+                                                            </div>
+                                                        )}
+                                                    </div>
+                                                    {isSelected && !ownsMatiere && (
+                                                        <Badge variant="default" className="text-xs">
+                                                            Assigné
+                                                        </Badge>
+                                                    )}
+                                                </label>
+                                            )
+                                        })}
+                                    </div>
+                                )}
                             </div>
 
-                            {eligibleSurveillants.length === 0 ? (
-                                <Alert>
-                                    <Info className="h-4 w-4" />
+                            {errors.length > 0 && (
+                                <Alert variant="destructive">
+                                    <AlertCircle className="h-4 w-4" />
+                                    <AlertTitle>Erreurs de validation</AlertTitle>
                                     <AlertDescription>
-                                        {!selectedMatiereId
-                                            ? 'Sélectionnez une matière pour voir les surveillants éligibles'
-                                            : 'Aucun surveillant éligible pour cette matière'}
+                                        <ul className="list-disc list-inside space-y-1">
+                                            {errors.map((error, index) => (
+                                                <li key={index}>{error}</li>
+                                            ))}
+                                        </ul>
                                     </AlertDescription>
                                 </Alert>
-                            ) : (
-                                <div className="border rounded-lg p-3 max-h-60 overflow-y-auto space-y-2 bg-slate-50">
-                                    {eligibleSurveillants.map((ens: typeof enseignants[0]) => {
-                                        const isSelected = assignedSurveillants.includes(ens.id)
-                                        const ownsMatiere = selectedMatiereId && matieres.find((m: typeof matieres[0]) =>
-                                            m.id === parseInt(selectedMatiereId)
-                                        ) && ens.matieres?.some((m: typeof ens.matieres[0]) =>
-                                            m.id === parseInt(selectedMatiereId)
-                                        )
-
-                                        return (
-                                            <label
-                                                key={ens.id}
-                                                className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${ownsMatiere
-                                                    ? 'opacity-50 cursor-not-allowed bg-red-50'
-                                                    : isSelected
-                                                        ? 'bg-blue-100 hover:bg-blue-200'
-                                                        : 'hover:bg-slate-100'
-                                                    }`}
-                                            >
-                                                <input
-                                                    type="checkbox"
-                                                    checked={isSelected}
-                                                    disabled={!!ownsMatiere}
-                                                    onChange={(e) => {
-                                                        if (e.target.checked) {
-                                                            setAssignedSurveillants(prev => [...prev, ens.id])
-                                                        } else {
-                                                            setAssignedSurveillants(prev => prev.filter(id => id !== ens.id))
-                                                        }
-                                                    }}
-                                                    className="w-4 h-4 cursor-pointer accent-blue-600"
-                                                    aria-label={`Assigner ${ens.nom} ${ens.prenom}`}
-                                                />
-                                                <div className="flex-1">
-                                                    <div className="text-sm font-medium">
-                                                        {ens.nom} {ens.prenom}
-                                                    </div>
-                                                    {ownsMatiere && (
-                                                        <div className="text-xs text-red-600">
-                                                            ⚠️ Ne peut surveiller sa propre matière
-                                                        </div>
-                                                    )}
-                                                </div>
-                                                {isSelected && !ownsMatiere && (
-                                                    <Badge variant="default" className="text-xs">
-                                                        Assigné
-                                                    </Badge>
-                                                )}
-                                            </label>
-                                        )
-                                    })}
-                                </div>
                             )}
-                        </div>
+                        </CardContent>
+                    </Card>
+                )
+            }
 
-                        {errors.length > 0 && (
-                            <Alert variant="destructive">
-                                <AlertCircle className="h-4 w-4" />
-                                <AlertTitle>Erreurs de validation</AlertTitle>
+            {/* Form - ENSEIGNANT MODE */}
+            {
+                isSurveillant && !isAdmin && selectedSeance && (
+                    <Card>
+                        <CardHeader>
+                            <CardTitle>Séance sélectionnée</CardTitle>
+                        </CardHeader>
+                        <CardContent className="space-y-3">
+                            <div className="grid grid-cols-2 gap-4">
+                                <div>
+                                    <p className="text-sm text-slate-500">Séance</p>
+                                    <p className="font-medium">#{selectedSeance.id}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-slate-500">Matière</p>
+                                    <p className="font-medium">{selectedSeance.matieres?.[0]?.nom || 'Non définie'}</p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-slate-500">Horaire</p>
+                                    <p className="font-medium">
+                                        {selectedSeance.horaire?.embHoraire?.hdebut}h00 - {selectedSeance.horaire?.embHoraire?.hfin}h00
+                                    </p>
+                                </div>
+                                <div>
+                                    <p className="text-sm text-slate-500">Date</p>
+                                    <p className="font-medium capitalize">{formattedDate}</p>
+                                </div>
+                            </div>
+
+                            <Alert>
+                                <Info className="h-4 w-4" />
+                                <AlertTitle>En soumettant ce vœu:</AlertTitle>
                                 <AlertDescription>
-                                    <ul className="list-disc list-inside space-y-1">
-                                        {errors.map((error, index) => (
-                                            <li key={index}>{error}</li>
-                                        ))}
+                                    <ul className="list-disc list-inside mt-1 space-y-1">
+                                        <li>Vous serez assigné à cette séance de surveillance</li>
+                                        <li>Vos charges de surveillance seront recalculées</li>
                                     </ul>
                                 </AlertDescription>
                             </Alert>
-                        )}
-                    </CardContent>
-                </Card>
-            )}
-
-            {/* Form - ENSEIGNANT MODE */}
-            {isSurveillant && !isAdmin && selectedSeance && (
-                <Card>
-                    <CardHeader>
-                        <CardTitle>Séance sélectionnée</CardTitle>
-                    </CardHeader>
-                    <CardContent className="space-y-3">
-                        <div className="grid grid-cols-2 gap-4">
-                            <div>
-                                <p className="text-sm text-slate-500">Séance</p>
-                                <p className="font-medium">#{selectedSeance.id}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-slate-500">Matière</p>
-                                <p className="font-medium">{selectedSeance.matieres?.[0]?.nom || 'Non définie'}</p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-slate-500">Horaire</p>
-                                <p className="font-medium">
-                                    {selectedSeance.horaire?.embHoraire?.hdebut}h00 - {selectedSeance.horaire?.embHoraire?.hfin}h00
-                                </p>
-                            </div>
-                            <div>
-                                <p className="text-sm text-slate-500">Date</p>
-                                <p className="font-medium capitalize">{formattedDate}</p>
-                            </div>
-                        </div>
-
-                        <Alert>
-                            <Info className="h-4 w-4" />
-                            <AlertTitle>En soumettant ce vœu:</AlertTitle>
-                            <AlertDescription>
-                                <ul className="list-disc list-inside mt-1 space-y-1">
-                                    <li>Vous serez assigné à cette séance de surveillance</li>
-                                    <li>Vos charges de surveillance seront recalculées</li>
-                                </ul>
-                            </AlertDescription>
-                        </Alert>
-                    </CardContent>
-                </Card>
-            )}
+                        </CardContent>
+                    </Card>
+                )
+            }
 
             {/* Actions */}
             <div className="flex justify-end gap-3">
@@ -931,6 +985,6 @@ export function TimelineSeancePage() {
                             : 'Soumettre un vœu'}
                 </Button>
             </div>
-        </div>
+        </div >
     )
 }

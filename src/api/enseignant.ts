@@ -66,7 +66,8 @@ export type EnseignantDTO = {
 // Response type for charge surveillance calculation
 export type CalculerMResponse = {
   enseignantId: number
-  m: number
+  m: number,
+  chargeSurveillance: number
 }
 
 export const enseignantApi = {

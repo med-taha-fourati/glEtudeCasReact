@@ -49,12 +49,14 @@ export function DashboardHome() {
 
   // Fetch charge surveillance (M) for the current user
   const [chargeSurveillance, setChargeSurveillance] = useState<number | null>(null)
+  const [m, setM] = useState<number | null>(null)
 
   useEffect(() => {
     if (userId && role === 'ENSEIGNANT') {
       enseignantApi.calculerChargeSurveillance(userId)
         .then(response => {
-          setChargeSurveillance(response.data.m)
+          setChargeSurveillance(response.data.chargeSurveillance)
+          setM(response.data.m);
         })
         .catch(error => {
           console.error('Failed to fetch charge surveillance:', error)
@@ -276,10 +278,24 @@ export function DashboardHome() {
               <p className="text-3xl font-bold text-blue-600">
                 {chargeSurveillance !== null ? chargeSurveillance : '...'}
               </p>
-              <p className="text-xs text-slate-500">Charge de surveillance (M)</p>
             </CardContent>
           </Card>
         )}
+
+        {/* Show M card only for enseignants */}
+        {/* {role === 'ENSEIGNANT' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>M</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-blue-600">
+                {m !== null ? m : '...'}
+              </p>
+              <p className="text-xs text-slate-500">M</p>
+            </CardContent>
+          </Card>
+        )} */}
       </div>
 
       <Card>

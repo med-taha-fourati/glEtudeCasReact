@@ -13,6 +13,8 @@ import '@fullcalendar/core/index.js'
 import { Seance } from 'api/enseignant'
 import { seanceApi } from '@/api/seance'
 import { enseignantApi } from '@/api/enseignant'
+import { PDFExportModal } from '@/components/PDFExportModal'
+import { FileDown } from 'lucide-react'
 
 const FILTER_STORAGE_KEY = 'dashboard.showOnlyMySurveillances'
 
@@ -28,6 +30,9 @@ export function DashboardHome() {
     const saved = localStorage.getItem(FILTER_STORAGE_KEY)
     return saved === 'true'
   })
+
+  // PDF Export modal state
+  const [pdfModalOpen, setPdfModalOpen] = useState(false)
 
   // Save preference to localStorage
   useEffect(() => {
@@ -251,6 +256,18 @@ export function DashboardHome() {
             </label>
           </div>
         )}
+
+        {/* PDF Export button - for SURVEILLANT or ADMIN */}
+        {(etatSurveillant === 'SURVEILLANT' || role === 'ADMIN') && (
+          <Button
+            onClick={() => setPdfModalOpen(true)}
+            variant="outline"
+            className="gap-2"
+          >
+            <FileDown className="w-4 h-4" />
+            {role === 'ADMIN' ? 'Exporter PDF' : 'Mon PDF'}
+          </Button>
+        )}
         {/* <Button onClick={() => navigate('/seances')}>Voir les séances</Button> */}
       </div>
 
@@ -346,6 +363,16 @@ export function DashboardHome() {
           />
         </CardContent>
       </Card>
+
+      {/* PDF Export Modal */}
+      <PDFExportModal
+        open={pdfModalOpen}
+        onOpenChange={setPdfModalOpen}
+        role={role as 'ADMIN' | 'ENSEIGNANT'}
+        userId={userId!}
+        enseignants={enseignants}
+        seances={seances}
+      />
     </div>
   )
 }

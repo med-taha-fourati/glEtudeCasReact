@@ -1,6 +1,7 @@
 import axios from 'axios'
 import { useAuthStore } from '@/store/auth'
 import { useUIStore } from '@/store/ui'
+import { normalizeError, AppError } from '@/utils/errorHandling'
 
 const api = axios.create({
   baseURL: 'http://localhost:8080',
@@ -18,26 +19,30 @@ api.interceptors.request.use((config) => {
   return config
 })
 
+// Global error normalization interceptor
 api.interceptors.response.use(
   (response) => response,
   (error) => {
-    const uiStore = useUIStore.getState()
+    // Normalize error to AppError format
+    const normalizedError: AppError = normalizeError(error)
 
-    if (!error.response) {
-      uiStore.setGlobalError('Réseau indisponible ou serveur injoignable.')
-      return Promise.reject(error)
-    }
+    // Log for debugging
+    console.error('[API Error]', normalizedError)
 
-    const status = error.response.status
-
-    if (status === 401) {
+    // Handle special authentication case
+    if (normalizedError.status === 401) {
       useAuthStore.getState().logout()
       window.location.href = '/login'
-    } else if (status >= 500) {
-      uiStore.setGlobalError('Erreur serveur interne.')
     }
 
-    return Promise.reject(error)
+    // Set global error message for UI store (optional)
+    // const uiStore = useUIStore.getState()
+    // if (normalizedError.status && normalizedError.status >= 500) {
+    //   uiStore.setGlobalError(normalizedError.message)
+    // }
+
+    // CRITICAL: Reject with normalized error, not raw error
+    return Promise.reject(normalizedError)
   }
 )
 

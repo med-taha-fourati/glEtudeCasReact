@@ -48,6 +48,7 @@ export const seanceApi = {
   edit: (id: number, payload: SeanceDTO) => api.put<Seance>(`/seance/edit?id=${id}`, payload),
   delete: (id: number) => api.delete(`/seance/delete?id=${id}`),
   soumettreVoeu: (enseignantId: number, seanceId: number) => api.post(`/seance/soumettre-voeu?enseignantId=${enseignantId}&seanceId=${seanceId}`),
+  retirerVoeu: (enseignantId: number, seanceId: number) => api.delete(`/seance/retirer-voeu?enseignantId=${enseignantId}&seanceId=${seanceId}`),
   verrouiller: (verrouiller: boolean) => api.post(`/seance/verrouiller?verrouiller=${verrouiller}`),
   affecterAutomatiquement: () => api.post('/seance/affecter-automatiquement'),
   terminerExamen: (id: number) => api.post(`/seance/terminer-examen?seanceId=${id}`),

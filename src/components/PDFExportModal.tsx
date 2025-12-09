@@ -6,6 +6,7 @@ import { Input } from '@/components/ui/input'
 import { useToast } from '@/components/ui/use-toast'
 import { generateSurveillancePDF } from '@/utils/pdfGenerator'
 import { Loader2 } from 'lucide-react'
+import type { AppError } from '@/utils/errorHandling'
 
 type Enseignant = {
     id: number
@@ -117,11 +118,12 @@ export function PDFExportModal({
             })
 
             onOpenChange(false)
-        } catch (error) {
+        } catch (err) {
+            const error = err as AppError
             console.error('PDF generation error:', error)
             toast({
                 title: 'Erreur',
-                description: 'Erreur lors de la génération du PDF',
+                description: error.message,
                 variant: 'destructive'
             })
         } finally {

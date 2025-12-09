@@ -14,7 +14,9 @@ import { Seance } from 'api/enseignant'
 import { seanceApi } from '@/api/seance'
 import { enseignantApi } from '@/api/enseignant'
 import { PDFExportModal } from '@/components/PDFExportModal'
-import { FileDown } from 'lucide-react'
+import { Calendar, Users, BookOpen, FileDown } from 'lucide-react'
+import api from '@/api/api'
+import type { AppError } from '@/utils/errorHandling'
 
 const FILTER_STORAGE_KEY = 'dashboard.showOnlyMySurveillances'
 
@@ -25,43 +27,43 @@ export function DashboardHome() {
   const { data: enseignants = [], isLoading: enseignantsLoading } = useEnseignants()
   const { data: matieres = [], isLoading: matieresLoading } = useMatieres()
 
-  // Filter state with localStorage persistence
+  
   const [showOnlyMySurveillances, setShowOnlyMySurveillances] = useState(() => {
     const saved = localStorage.getItem(FILTER_STORAGE_KEY)
     return saved === 'true'
   })
 
-  // PDF Export modal state
+  
   const [pdfModalOpen, setPdfModalOpen] = useState(false)
 
-  // Save preference to localStorage
+  
   useEffect(() => {
     localStorage.setItem(FILTER_STORAGE_KEY, String(showOnlyMySurveillances))
   }, [showOnlyMySurveillances])
 
-  // NEW LOGIC: Use enseignants as source of truth for filtering
+  
   const filteredSeances = useMemo(() => {
     if (!showOnlyMySurveillances || !userId || !enseignants.length) {
       return seances
     }
 
-    // Find current logged-in enseignant
+    
     const currentEnseignant = enseignants.find((e: typeof enseignants[0]) => e.id === userId)
 
     if (!currentEnseignant || !currentEnseignant.seances) {
       return []
     }
 
-    // Extract séance IDs from enseignant's assigned séances
+    
     const mySeanceIds = new Set(currentEnseignant.seances.map((s: typeof currentEnseignant.seances[0]) => s.id))
 
-    // Filter to only show séances that are in the enseignant's list
+    
     return seances.filter((s: typeof seances[0]) => mySeanceIds.has(s.id))
   }, [seances, showOnlyMySurveillances, userId, enseignants])
 
   const totalSeances = filteredSeances.length
 
-  // Fetch charge surveillance (M) for the current user
+  
   const [chargeSurveillance, setChargeSurveillance] = useState<number | null>(null)
   const [m, setM] = useState<number | null>(null)
 
@@ -72,13 +74,14 @@ export function DashboardHome() {
           setChargeSurveillance(response.data.chargeSurveillance)
           setM(response.data.m);
         })
-        .catch(error => {
-          console.error('Failed to fetch charge surveillance:', error)
+        .catch(err => {
+          const error = err as AppError
+          console.error('Failed to fetch N value:', error)
         })
     }
   }, [userId, role])
 
-  // NEW FUNCTION: Count enseignants assigned to a séance by iterating through all enseignants
+  
   const countEnseignantsForSeance = (seanceId: number): number => {
     if (!enseignants.length) return 0
 
@@ -91,25 +94,25 @@ export function DashboardHome() {
     return count
   }
 
-  // Generate vibrant, distinct colors for each seance
+  
   const getSeanceColor = (id: number) => {
     const colors = [
-      '#3B82F6', // blue
-      '#10B981', // green
-      '#F59E0B', // amber
-      '#EF4444', // red
-      '#8B5CF6', // violet
-      '#EC4899', // pink
-      '#14B8A6', // teal
-      '#F97316', // orange
-      '#6366F1', // indigo
-      '#84CC16', // lime',
+      '#3B82F6', 
+      '#10B981', 
+      '#F59E0B', 
+      '#EF4444', 
+      '#8B5CF6', 
+      '#EC4899', 
+      '#14B8A6', 
+      '#F97316', 
+      '#6366F1', 
+      '#84CC16', 
     ]
     return colors[id % colors.length]
   }
 
 
-  // Group seances by date
+  
   const seancesByDate = filteredSeances.reduce((acc: Record<string, typeof seances>, s: typeof seances[0]) => {
     const date = s.seanceDate
     if (!acc[date]) {
@@ -119,7 +122,7 @@ export function DashboardHome() {
     return acc
   }, {} as Record<string, typeof seances>)
 
-  // Create events with limit of 3 per day
+  
   const events = Object.entries(seancesByDate).flatMap(([date, daySeances]: [string, typeof seances]) => {
     const sortedSeances = daySeances.sort((a: typeof seances[0], b: typeof seances[0]) => {
       const aStart = a.horaire?.embHoraire?.hdebut ?? 8
@@ -127,7 +130,7 @@ export function DashboardHome() {
       return aStart - bStart
     })
 
-    // Take first 3 seances
+    
     const visibleSeances = sortedSeances.slice(0, 3)
     const hiddenCount = sortedSeances.length - 3
 
@@ -139,12 +142,12 @@ export function DashboardHome() {
       const startStr = `${s.seanceDate}T${String(hDebut).padStart(2, '0')}:00:00`
       const endStr = `${s.seanceDate}T${String(hFin).padStart(2, '0')}:00:00`
 
-      // Get matiere names (limit to 2)
+      
       const matieresList = s.matieres?.map((m: { nom: string }) => m.nom) || []
       const matiereNames = matieresList.slice(0, 2).join(', ')
       const extraMatieres = matieresList.length > 2 ? ` +${matieresList.length - 2}` : ''
 
-      // NEW: Count enseignants using the source of truth
+      
       const nbSurveillants = countEnseignantsForSeance(s.id)
 
       return {
@@ -166,7 +169,7 @@ export function DashboardHome() {
       }
     })
 
-    // Add "show more" indicator if there are hidden seances
+    
     if (hiddenCount > 0) {
       const showMoreEvent = {
         id: `more-${date}`,
@@ -191,7 +194,7 @@ export function DashboardHome() {
   })
 
 
-  // Event content component that fetches required surveillants
+  
   const EventContent = ({ eventInfo }: { eventInfo: any }) => {
     const [requiredN, setRequiredN] = useState<number | null>(null)
     const seanceId = eventInfo.event.extendedProps.seanceId
@@ -237,7 +240,7 @@ export function DashboardHome() {
           </p>
         </div>
 
-        {/* Filter checkbox - for SURVEILLANT users */}
+        
         {etatSurveillant === 'SURVEILLANT' && (
           <div className="flex items-center gap-2 bg-slate-50 px-4 py-2 rounded-lg border border-slate-200">
             <input
@@ -257,7 +260,7 @@ export function DashboardHome() {
           </div>
         )}
 
-        {/* PDF Export button - for SURVEILLANT or ADMIN */}
+        
         {(etatSurveillant === 'SURVEILLANT' || role === 'ADMIN') && (
           <Button
             onClick={() => setPdfModalOpen(true)}
@@ -306,7 +309,7 @@ export function DashboardHome() {
           </CardContent>
         </Card>
 
-        {/* Show M card only for enseignants */}
+        
         {role === 'ENSEIGNANT' && (
           <Card>
             <CardHeader>
@@ -320,7 +323,7 @@ export function DashboardHome() {
           </Card>
         )}
 
-        {/* Show M card only for enseignants */}
+        
         {/* {role === 'ENSEIGNANT' && (
           <Card>
             <CardHeader>
@@ -349,7 +352,7 @@ export function DashboardHome() {
             selectable={true}
             selectMirror={false}
             dateClick={(info) => {
-              // Navigate to timeline page
+              
               navigate(`/create-seance/${info.dateStr}`)
             }}
             eventContent={(eventInfo) => <EventContent eventInfo={eventInfo} />}
@@ -364,7 +367,7 @@ export function DashboardHome() {
         </CardContent>
       </Card>
 
-      {/* PDF Export Modal */}
+      
       <PDFExportModal
         open={pdfModalOpen}
         onOpenChange={setPdfModalOpen}

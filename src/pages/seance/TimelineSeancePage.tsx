@@ -19,6 +19,8 @@ import { useAuthStore } from '@/store/auth'
 import { useToast } from '@/components/ui/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
 import { AlertCircle, Info, Users } from 'lucide-react'
+import type { AppError } from '@/utils/errorHandling'
+import { ConfirmDialog } from '@/components/ui/confirm-dialog'
 
 const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16]
 const MIN_HOUR = 8
@@ -50,7 +52,7 @@ export function TimelineSeancePage() {
 
     const timelineRef = useRef<HTMLDivElement>(null)
 
-    // Parse date
+
     const dateObj = date ? new Date(date) : new Date()
     const [jour, mois, annee] = date ? date.split('-').map(Number) : [dateObj.getDate(), dateObj.getMonth() + 1, dateObj.getFullYear()]
 
@@ -61,26 +63,35 @@ export function TimelineSeancePage() {
         day: 'numeric'
     })
 
-    // Filter seances for this date
+
     const dateSeances = allSeances.filter((s: typeof allSeances[0]) => s.seanceDate === date)
 
-    // ADMIN MODE STATE
+
     const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([])
     const [selectedBlockId, setSelectedBlockId] = useState<number | 'new' | null>(null)
     const [isDragging, setIsDragging] = useState(false)
     const [dragType, setDragType] = useState<'create' | 'resize-start' | 'resize-end' | null>(null)
     const [dragBlockId, setDragBlockId] = useState<number | 'new' | null>(null)
 
-    // ENSEIGNANT MODE STATE
+
     const [selectedSeanceId, setSelectedSeanceId] = useState<number | null>(null)
 
-    // Form state
+
     const [selectedMatiereId, setSelectedMatiereId] = useState<string>('')
+    const [isCreatingNewMatiere, setIsCreatingNewMatiere] = useState(false)
+    const [newMatiereName, setNewMatiereName] = useState('')
+    const [newMatiereNbPaquets, setNewMatiereNbPaquets] = useState<number>(1)
     const [assignedSurveillants, setAssignedSurveillants] = useState<number[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
 
-    // Get eligible surveillants (filtered by etatSurveillant and matiere ownership)
+    // Cascade delete state
+    const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
+    const [seanceToDelete, setSeanceToDelete] = useState<number | null>(null)
+    const [linkedData, setLinkedData] = useState<{ type: string; count: number }[]>([])
+    const [isDeleting, setIsDeleting] = useState(false)
+
+
     const eligibleSurveillants = useMemo(() => {
         if (!isAdmin) return []
 
@@ -93,13 +104,13 @@ export function TimelineSeancePage() {
         const selectedMatiere = matieres.find((m: typeof matieres[0]) => m.id === parseInt(selectedMatiereId))
         if (!selectedMatiere) return surveillants
 
-        // Filter out enseignants who own this matiere
+
         return surveillants.filter((e: typeof enseignants[0]) =>
             !e.matieres?.some((m: typeof e.matieres[0]) => m.id === selectedMatiere.id)
         )
     }, [isAdmin, enseignants, selectedMatiereId, matieres])
 
-    // Initialize time blocks from existing seances (ADMIN MODE)
+
     useEffect(() => {
         if (!isAdmin) return
 
@@ -115,7 +126,7 @@ export function TimelineSeancePage() {
         setTimeBlocks(blocks)
     }, [dateSeances.length, date, isAdmin])
 
-    // Convert pixel to hour with snapping
+
     const pixelToHour = (pixelX: number): number => {
         if (!timelineRef.current) return MIN_HOUR
 
@@ -128,7 +139,7 @@ export function TimelineSeancePage() {
         return Math.max(MIN_HOUR, Math.min(MAX_HOUR, Math.round(rawHour)))
     }
 
-    // ADMIN: Mouse down on timeline (create new)
+
     const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!isAdmin) return
 
@@ -148,7 +159,7 @@ export function TimelineSeancePage() {
         setIsDragging(true)
     }
 
-    // ADMIN: Mouse down on block edge (resize)
+
     const handleBlockEdgeMouseDown = (e: React.MouseEvent, blockId: number | 'new', edge: 'start' | 'end') => {
         if (!isAdmin) return
 
@@ -158,13 +169,13 @@ export function TimelineSeancePage() {
         setIsDragging(true)
     }
 
-    // ADMIN: Mouse down on block body (select)
+
     const handleBlockClick = (blockId: number | 'new') => {
         if (!isAdmin) return
         setSelectedBlockId(blockId)
     }
 
-    // ADMIN: Mouse move
+
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!isAdmin || !isDragging || !dragBlockId) return
 
@@ -185,7 +196,7 @@ export function TimelineSeancePage() {
         }))
     }
 
-    // ADMIN: Mouse up
+
     const handleMouseUp = () => {
         if (!isAdmin) return
 
@@ -194,12 +205,12 @@ export function TimelineSeancePage() {
         setDragBlockId(null)
     }
 
-    // Track which block we've loaded to prevent re-loading
+
     const loadedBlockIdRef = useRef<number | 'new' | null>(null)
 
-    // Load assigned surveillants when selecting a block
+
     useEffect(() => {
-        // Only run if we're selecting a different block
+
         if (loadedBlockIdRef.current === selectedBlockId) return
 
         loadedBlockIdRef.current = selectedBlockId
@@ -216,20 +227,20 @@ export function TimelineSeancePage() {
             return
         }
 
-        // Find the seance and load its assigned surveillants
+
         const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === block.seanceId)
         if (seance) {
             const assignedIds = seance.enseignants?.map((e: typeof seance.enseignants[0]) => e.id) || []
             setAssignedSurveillants(assignedIds)
 
-            // Also load the matiere
+
             if (seance.matieres?.[0]) {
                 setSelectedMatiereId(String(seance.matieres[0].id))
             }
         }
     }, [selectedBlockId, isAdmin, timeBlocks, dateSeances])
 
-    // ADMIN: Delete block
+
     const handleDeleteBlock = async (blockId: number | 'new') => {
         if (!isAdmin) return
 
@@ -242,34 +253,121 @@ export function TimelineSeancePage() {
             return
         }
 
-        try {
-            await deleteMutation.mutateAsync(blockId as number)
-            setTimeBlocks(prev => prev.filter(b => b.id !== blockId))
-            if (selectedBlockId === blockId) {
-                setSelectedBlockId(null)
-                setSelectedMatiereId('')
+        const seanceId = blockId as number
+
+        // Check for linked records
+        const linkedMatieres = matieres.filter((m: any) => m.seance?.id === seanceId)
+        const linkedEnseignants = enseignants.filter((e: any) =>
+            e.seances?.some((s: any) => s.id === seanceId)
+        )
+
+        // If has linked records, show confirmation dialog
+        if (linkedMatieres.length > 0 || linkedEnseignants.length > 0) {
+            const items = []
+            if (linkedMatieres.length > 0) {
+                items.push({ type: 'matière(s)', count: linkedMatieres.length })
             }
-            toast({ title: 'Séance supprimée' })
-        } catch (error: any) {
-            toast({
-                title: 'Erreur',
-                description: 'Impossible de supprimer la séance',
-                variant: 'destructive'
-            })
+            if (linkedEnseignants.length > 0) {
+                items.push({ type: 'enseignant(s) assigné(s)', count: linkedEnseignants.length })
+            }
+
+            setLinkedData(items)
+            setSeanceToDelete(seanceId)
+            setDeleteConfirmOpen(true)
+        } else {
+            // No linked records, safe to delete directly
+            try {
+                await deleteMutation.mutateAsync(seanceId)
+                setTimeBlocks(prev => prev.filter(b => b.id !== blockId))
+                if (selectedBlockId === blockId) {
+                    setSelectedBlockId(null)
+                    setSelectedMatiereId('')
+                }
+                toast({ title: 'Séance supprimée' })
+            } catch (err) {
+                const error = err as AppError
+                toast({
+                    title: 'Erreur',
+                    description: error.message,
+                    variant: 'destructive'
+                })
+            }
         }
     }
 
-    // ENSEIGNANT: Handle checkbox selection
+    // Perform cascade delete after confirmation
+    const handleConfirmCascadeDelete = async () => {
+        if (!seanceToDelete) return
+
+        setIsDeleting(true)
+
+        try {
+            // Step 1: Remove all enseignant assignments
+            const linkedEnseignants = enseignants.filter((e: any) =>
+                e.seances?.some((s: any) => s.id === seanceToDelete)
+            )
+
+            for (const enseignant of linkedEnseignants) {
+                try {
+                    await seanceApi.retirerVoeu(enseignant.id, seanceToDelete)
+                } catch (error) {
+                    console.error(`Failed to remove enseignant ${enseignant.id}:`, error)
+                }
+            }
+
+            // Step 2: Delete matières linked to this séance
+            const linkedMatieres = matieres.filter((m: any) => m.seance?.id === seanceToDelete)
+
+            for (const matiere of linkedMatieres) {
+                try {
+                    await matiereApi.delete(matiere.id)
+                } catch (error) {
+                    console.error(`Failed to delete matiere ${matiere.id}:`, error)
+                }
+            }
+
+            // Step 3: Now safe to delete the séance
+            await deleteMutation.mutateAsync(seanceToDelete)
+            setTimeBlocks(prev => prev.filter(b => b.id !== seanceToDelete))
+            if (selectedBlockId === seanceToDelete) {
+                setSelectedBlockId(null)
+                setSelectedMatiereId('')
+            }
+
+            queryClient.invalidateQueries({ queryKey: ['seances'] })
+            queryClient.invalidateQueries({ queryKey: ['matieres'] })
+            queryClient.invalidateQueries({ queryKey: ['enseignants'] })
+
+            toast({
+                title: 'Suppression réussie',
+                description: `Séance et ${linkedMatieres.length + linkedEnseignants.length} élément(s) lié(s) supprimés`
+            })
+        } catch (err) {
+            const error = err as AppError
+            toast({
+                title: 'Erreur lors de la suppression',
+                description: error.message,
+                variant: 'destructive'
+            })
+        } finally {
+            setIsDeleting(false)
+            setDeleteConfirmOpen(false)
+            setSeanceToDelete(null)
+            setLinkedData([])
+        }
+    }
+
+
     const handleSelectSeance = (seanceId: number) => {
         if (!isSurveillant) return
         setSelectedSeanceId(prev => prev === seanceId ? null : seanceId)
     }
 
-    // Get selected block or seance
+
     const selectedBlock = isAdmin ? timeBlocks.find(b => b.id === selectedBlockId) : null
     const selectedSeance = isSurveillant ? dateSeances.find((s: typeof dateSeances[0]) => s.id === selectedSeanceId) : null
 
-    // Calculate block position and width
+
     const getBlockStyle = (hDebut: number, hFin: number) => {
         const startPercent = ((hDebut - MIN_HOUR) / (MAX_HOUR - MIN_HOUR)) * 100
         const widthPercent = ((hFin - hDebut) / (MAX_HOUR - MIN_HOUR)) * 100
@@ -280,14 +378,24 @@ export function TimelineSeancePage() {
         }
     }
 
-    // ADMIN: Submit seance creation/edit
+
     const handleAdminSubmit = async () => {
         if (!isAdmin || !selectedBlock) return
 
         const validationErrors: string[] = []
 
-        if (!selectedMatiereId) {
-            validationErrors.push('Veuillez sélectionner une matière')
+
+        if (isCreatingNewMatiere) {
+            if (!newMatiereName.trim()) {
+                validationErrors.push('Veuillez saisir le nom de la matière')
+            }
+            if (newMatiereNbPaquets < 1) {
+                validationErrors.push('Le nombre de paquets doit être au moins 1')
+            }
+        } else {
+            if (!selectedMatiereId) {
+                validationErrors.push('Veuillez sélectionner une matière')
+            }
         }
 
         if (selectedBlock.hDebut < MIN_HOUR) {
@@ -311,19 +419,23 @@ export function TimelineSeancePage() {
         setIsSubmitting(true)
 
         try {
-            const matiere = matieres.find((m: typeof matieres[0]) => m.id === parseInt(selectedMatiereId))
-            if (!matiere) throw new Error('Matière non trouvée')
+
+            let matiere = null
+            if (!isCreatingNewMatiere) {
+                matiere = matieres.find((m: typeof matieres[0]) => m.id === parseInt(selectedMatiereId))
+                if (!matiere) throw new Error('Matière non trouvée')
+            }
 
             const { hDebut, hFin } = selectedBlock
 
-            // Create/ensure horaire exists
+
             try {
                 await horaireApi.get(hDebut, hFin)
             } catch {
                 await horaireApi.add({ hDebut, hFin })
             }
 
-            // Create or update seance
+
             const payload: SeanceDTO = {
                 jour: annee,
                 mois,
@@ -336,14 +448,28 @@ export function TimelineSeancePage() {
                 const response = await seanceApi.add(payload)
                 const seanceId = response.data.id
 
-                const matierePayload: MatiereDTO = {
-                    nom: matiere.nom,
-                    nbPaquets: matiere.nbPaquets,
-                    seanceId
-                }
-                await matiereApi.edit(matiere.id, matierePayload)
 
-                // Assign surveillants
+                if (isCreatingNewMatiere) {
+
+                    const newMatierePayload: MatiereDTO = {
+                        nom: newMatiereName.trim(),
+                        nbPaquets: newMatiereNbPaquets,
+                        seanceId
+                    }
+                    await matiereApi.add(newMatierePayload)
+                } else {
+
+                    if (matiere) {
+                        const matierePayload: MatiereDTO = {
+                            nom: matiere.nom,
+                            nbPaquets: matiere.nbPaquets,
+                            seanceId
+                        }
+                        await matiereApi.edit(matiere.id, matierePayload)
+                    }
+                }
+
+
                 for (const enseignantId of assignedSurveillants) {
                     try {
                         await seanceApi.soumettreVoeu(enseignantId, seanceId)
@@ -360,14 +486,17 @@ export function TimelineSeancePage() {
             } else {
                 await seanceApi.edit(selectedBlock.seanceId!, payload)
 
-                const matierePayload: MatiereDTO = {
-                    nom: matiere.nom,
-                    nbPaquets: matiere.nbPaquets,
-                    seanceId: selectedBlock.seanceId!
-                }
-                await matiereApi.edit(matiere.id, matierePayload)
 
-                // Assign surveillants
+                if (!isCreatingNewMatiere && matiere) {
+                    const matierePayload: MatiereDTO = {
+                        nom: matiere.nom,
+                        nbPaquets: matiere.nbPaquets,
+                        seanceId: selectedBlock.seanceId!
+                    }
+                    await matiereApi.edit(matiere.id, matierePayload)
+                }
+
+
                 for (const enseignantId of assignedSurveillants) {
                     try {
                         await seanceApi.soumettreVoeu(enseignantId, selectedBlock.seanceId!)
@@ -390,10 +519,11 @@ export function TimelineSeancePage() {
 
             navigate('/dashboard')
 
-        } catch (error: any) {
+        } catch (err) {
+            const error = err as AppError
             toast({
                 title: 'Erreur',
-                description: error.message || 'Une erreur est survenue',
+                description: error.message,
                 variant: 'destructive'
             })
         } finally {
@@ -401,7 +531,7 @@ export function TimelineSeancePage() {
         }
     }
 
-    // ENSEIGNANT: Submit voeu
+
     const handleEnseignantSubmit = async () => {
         if (!isSurveillant || !selectedSeanceId || !userId) return
 
@@ -421,10 +551,11 @@ export function TimelineSeancePage() {
 
             navigate('/dashboard')
 
-        } catch (error: any) {
+        } catch (err) {
+            const error = err as AppError
             toast({
                 title: 'Erreur',
-                description: error.response?.data?.message || 'Une erreur est survenue',
+                description: error.message,
                 variant: 'destructive'
             })
         } finally {
@@ -432,11 +563,53 @@ export function TimelineSeancePage() {
         }
     }
 
-    // READ-ONLY MODE (PAS_SURVEILLANT)
+
+    const handleEnseignantRetirer = async () => {
+        if (!isSurveillant || !selectedSeanceId || !userId) return
+
+        setIsSubmitting(true)
+
+        try {
+            await seanceApi.retirerVoeu(userId, selectedSeanceId)
+            await enseignantApi.recalcCharges()
+
+            toast({
+                title: 'Vœu retiré avec succès!',
+                description: 'Vous avez été désassigné de cette séance.'
+            })
+
+            queryClient.invalidateQueries({ queryKey: ['seances'] })
+            queryClient.invalidateQueries({ queryKey: ['enseignants'] })
+
+            navigate('/dashboard')
+
+        } catch (err) {
+            const error = err as AppError
+            toast({
+                title: 'Erreur',
+                description: error.message,
+                variant: 'destructive'
+            })
+        } finally {
+            setIsSubmitting(false)
+        }
+    }
+
+
+    const hasVoeuForSelectedSeance = () => {
+        if (!isSurveillant || !selectedSeanceId || !userId) return false
+
+        const currentEnseignant = enseignants.find((e: any) => e.id === userId)
+        if (!currentEnseignant) return false
+
+        return currentEnseignant.seances?.some((s: any) => s.id === selectedSeanceId) || false
+    }
+
+
     if (isReadOnly) {
         return (
             <div className="container mx-auto p-4 max-w-6xl space-y-6">
-                {/* Header */}
+
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold">Séances du jour</h1>
@@ -448,7 +621,7 @@ export function TimelineSeancePage() {
                     </Badge>
                 </div>
 
-                {/* Alert */}
+
                 <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Vous n'avez pas les droits pour cette action.</AlertTitle>
@@ -457,7 +630,7 @@ export function TimelineSeancePage() {
                     </AlertDescription>
                 </Alert>
 
-                {/* Read-only timeline */}
+
                 <Card>
                     <CardHeader>
                         <CardTitle>Séances disponibles</CardTitle>
@@ -472,7 +645,7 @@ export function TimelineSeancePage() {
                             </div>
                         ) : (
                             <div className="space-y-2">
-                                {/* Hour header */}
+
                                 <div className="flex">
                                     <div className="w-32 flex-shrink-0" />
                                     <div
@@ -495,7 +668,7 @@ export function TimelineSeancePage() {
                                     <div className="w-16 flex-shrink-0" />
                                 </div>
 
-                                {/* Read-only seance blocks */}
+
                                 {dateSeances.map((seance: typeof dateSeances[0]) => {
                                     const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
                                     const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
@@ -533,7 +706,7 @@ export function TimelineSeancePage() {
                     </CardContent>
                 </Card>
 
-                {/* Back button */}
+
                 <div className="flex justify-end">
                     <Button variant="outline" onClick={() => navigate('/dashboard')}>
                         Retour au tableau de bord
@@ -543,10 +716,10 @@ export function TimelineSeancePage() {
         )
     }
 
-    // ADMIN & SURVEILLANT MODES
+
     return (
         <div className="container mx-auto p-4 max-w-6xl space-y-6">
-            {/* Header with permission badge */}
+
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold">
@@ -566,7 +739,7 @@ export function TimelineSeancePage() {
                 </div>
             </div>
 
-            {/* Timeline */}
+
             <Card>
                 <CardHeader>
                     <CardTitle>{isAdmin ? 'Plages horaires' : 'Séances disponibles'}</CardTitle>
@@ -583,7 +756,7 @@ export function TimelineSeancePage() {
                         </div>
                     ) : (
                         <div className="space-y-2">
-                            {/* Hour header */}
+
                             <div className="flex">
                                 {!isAdmin && <div className="w-8 flex-shrink-0" />}
                                 <div className="w-32 flex-shrink-0" />
@@ -607,11 +780,11 @@ export function TimelineSeancePage() {
                                 <div className="w-16 flex-shrink-0" />
                             </div>
 
-                            {/* ADMIN MODE */}
+
                             {isAdmin && (
                                 <>
                                     {timeBlocks.filter(b => !b.isNew).map((block) => {
-                                        // Get assigned surveillants for this block
+
                                         const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === block.seanceId)
                                         const surveillantCount = seance?.enseignants?.length || 0
 
@@ -715,7 +888,7 @@ export function TimelineSeancePage() {
                                 </>
                             )}
 
-                            {/* ENSEIGNANT MODE */}
+
                             {isSurveillant && !isAdmin && dateSeances.map((seance: typeof dateSeances[0]) => {
                                 const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
                                 const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
@@ -767,7 +940,7 @@ export function TimelineSeancePage() {
                 </CardContent >
             </Card >
 
-            {/* Form - ADMIN MODE */}
+
             {
                 isAdmin && selectedBlock && (
                     <Card>
@@ -783,20 +956,60 @@ export function TimelineSeancePage() {
                                 </p>
                             </div>
 
-                            <div className="space-y-2">
-                                <label className="text-sm font-medium">Matière *</label>
-                                <Select value={selectedMatiereId} onValueChange={setSelectedMatiereId}>
-                                    <SelectTrigger>
-                                        <SelectValue placeholder="Sélectionnez une matière" />
-                                    </SelectTrigger>
-                                    <SelectContent>
-                                        {matieres.map((matiere: typeof matieres[0]) => (
-                                            <SelectItem key={matiere.id} value={String(matiere.id)}>
-                                                {matiere.nom} ({matiere.nbPaquets} paquets)
-                                            </SelectItem>
-                                        ))}
-                                    </SelectContent>
-                                </Select>
+                            <div className="space-y-3">
+                                <div className="flex items-center justify-between">
+                                    <label className="text-sm font-medium">Matière *</label>
+                                    {selectedBlock.isNew && (
+                                        <Button
+                                            type="button"
+                                            variant="outline"
+                                            size="sm"
+                                            onClick={() => {
+                                                setIsCreatingNewMatiere(!isCreatingNewMatiere)
+                                                if (!isCreatingNewMatiere) {
+                                                    setSelectedMatiereId('')
+                                                }
+                                            }}
+                                        >
+                                            {isCreatingNewMatiere ? 'Choisir existante' : 'Créer nouvelle'}
+                                        </Button>
+                                    )}
+                                </div>
+
+                                {isCreatingNewMatiere ? (
+                                    <div className="space-y-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Nom de la matière</label>
+                                            <Input
+                                                value={newMatiereName}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMatiereName(e.target.value)}
+                                                placeholder="Ex: Mathématiques"
+                                            />
+                                        </div>
+                                        <div className="space-y-2">
+                                            <label className="text-sm font-medium">Nombre de paquets</label>
+                                            <Input
+                                                type="number"
+                                                min="1"
+                                                value={newMatiereNbPaquets}
+                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMatiereNbPaquets(parseInt(e.target.value) || 1)}
+                                            />
+                                        </div>
+                                    </div>
+                                ) : (
+                                    <Select value={selectedMatiereId} onValueChange={setSelectedMatiereId}>
+                                        <SelectTrigger>
+                                            <SelectValue placeholder="Sélectionnez une matière" />
+                                        </SelectTrigger>
+                                        <SelectContent>
+                                            {matieres.map((matiere: typeof matieres[0]) => (
+                                                <SelectItem key={matiere.id} value={String(matiere.id)}>
+                                                    {matiere.nom} ({matiere.nbPaquets} paquets)
+                                                </SelectItem>
+                                            ))}
+                                        </SelectContent>
+                                    </Select>
+                                )}
                             </div>
 
                             <div className="grid grid-cols-2 gap-4">
@@ -832,7 +1045,7 @@ export function TimelineSeancePage() {
                                 </div>
                             </div>
 
-                            {/* Surveillant Assignment */}
+
                             <div className="space-y-2">
                                 <div className="flex items-center gap-2">
                                     <Users className="w-4 h-4 text-slate-600" />
@@ -925,7 +1138,7 @@ export function TimelineSeancePage() {
                 )
             }
 
-            {/* Form - ENSEIGNANT MODE */}
+
             {
                 isSurveillant && !isAdmin && selectedSeance && (
                     <Card>
@@ -969,22 +1182,51 @@ export function TimelineSeancePage() {
                 )
             }
 
-            {/* Actions */}
+
             <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => navigate('/dashboard')}>
                     Annuler
                 </Button>
-                <Button
-                    onClick={isAdmin ? handleAdminSubmit : handleEnseignantSubmit}
-                    disabled={isSubmitting || (isAdmin ? !selectedBlock : !selectedSeanceId)}
-                >
-                    {isSubmitting
-                        ? 'En cours...'
-                        : isAdmin
-                            ? (selectedBlock?.isNew ? 'Créer la séance' : 'Modifier la séance')
-                            : 'Soumettre un vœu'}
-                </Button>
+                {isAdmin ? (
+                    <Button
+                        onClick={handleAdminSubmit}
+                        disabled={isSubmitting || !selectedBlock}
+                    >
+                        {isSubmitting
+                            ? 'En cours...'
+                            : (selectedBlock?.isNew ? 'Créer la séance' : 'Modifier la séance')}
+                    </Button>
+                ) : (
+                    <>
+                        {hasVoeuForSelectedSeance() ? (
+                            <Button
+                                variant="destructive"
+                                onClick={handleEnseignantRetirer}
+                                disabled={isSubmitting || !selectedSeanceId}
+                            >
+                                {isSubmitting ? 'En cours...' : 'Retirer mon vœu'}
+                            </Button>
+                        ) : (
+                            <Button
+                                onClick={handleEnseignantSubmit}
+                                disabled={isSubmitting || !selectedSeanceId}
+                            >
+                                {isSubmitting ? 'En cours...' : 'Soumettre un vœu'}
+                            </Button>
+                        )}
+                    </>
+                )}
             </div>
+
+            <ConfirmDialog
+                open={deleteConfirmOpen}
+                onClose={() => setDeleteConfirmOpen(false)}
+                onConfirm={handleConfirmCascadeDelete}
+                title="Supprimer la séance?"
+                description="Cette séance a des éléments liés qui seront également supprimés."
+                linkedItems={linkedData}
+                isLoading={isDeleting}
+            />
         </div >
     )
 }

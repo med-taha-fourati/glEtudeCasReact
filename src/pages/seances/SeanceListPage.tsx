@@ -70,9 +70,9 @@ export function SeanceListPage() {
 
   const handleCreate = () => {
     const payload: SeanceDTO = {
-      jour: formData.annee,
+      jour: formData.jour,
       mois: formData.mois,
-      annee: formData.jour,
+      annee: formData.annee,
       horaireHDebut: formData.horaireHDebut,
       horaireHFin: formData.horaireHFin
     }
@@ -95,9 +95,9 @@ export function SeanceListPage() {
     if (!editSeance) return
 
     const payload: SeanceDTO = {
-      jour: formData.annee,
+      jour: formData.jour,
       mois: formData.mois,
-      annee: formData.jour,
+      annee: formData.annee,
       horaireHDebut: formData.horaireHDebut,
       horaireHFin: formData.horaireHFin
     }

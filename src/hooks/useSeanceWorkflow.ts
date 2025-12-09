@@ -5,6 +5,7 @@ import { enseignantApi } from '@/api/enseignant'
 import { matiereApi, MatiereDTO } from '@/api/matiere'
 import { useToast } from '@/components/ui/use-toast'
 import { useAuthStore } from '@/store/auth'
+import type { AppError } from '@/utils/errorHandling'
 
 type WorkflowPayload = {
     date: Date
@@ -79,9 +80,10 @@ export function useSeanceWorkflow() {
                 console.log('Charges recalculated')
 
                 return { seance }
-            } catch (error: any) {
+            } catch (err) {
+                const error = err as AppError
                 console.error('Workflow failed:', error)
-                throw new Error(error.response?.data?.message || error.message || 'Une erreur est survenue')
+                throw error
             }
         },
         onSuccess: () => {
@@ -89,13 +91,13 @@ export function useSeanceWorkflow() {
                 title: 'Séance créée et vœu soumis avec succès!',
                 description: 'La matière a été liée et les charges ont été recalculées.'
             })
-            // Invalidate queries to refresh calendar
             queryClient.invalidateQueries({ queryKey: ['seances'] })
             queryClient.invalidateQueries({ queryKey: ['horaires'] })
             queryClient.invalidateQueries({ queryKey: ['matieres'] })
             queryClient.invalidateQueries({ queryKey: ['enseignants'] })
         },
-        onError: (error: Error) => {
+        onError: (err: unknown) => {
+            const error = err as AppError
             toast({
                 title: 'Erreur lors de la création',
                 description: error.message,

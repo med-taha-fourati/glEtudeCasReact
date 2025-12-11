@@ -1,3 +1,4 @@
+// hooks/useLogin.ts
 import { useMutation } from '@tanstack/react-query'
 import { enseignantApi, LoginPayload, LoginResponse } from '@/api/enseignant'
 import { useAuthStore } from '@/store/auth'
@@ -9,25 +10,31 @@ export function useLogin() {
 
   return useMutation({
     mutationFn: async (payload: LoginPayload) => {
-      // Step 1: Login and get token
       const loginResponse = await enseignantApi.login(payload)
       const loginData = loginResponse.data as LoginResponse
 
-      // Step 2: Fetch profile to get userId
       const profileResponse = await enseignantApi.profile(loginData.token)
       const profile = profileResponse.data
 
       return { loginData, profile }
     },
     onSuccess: ({ loginData, profile }) => {
-      login(loginData.token, profile.username, profile.role, profile.id, profile.etatSurveillant)
+      login({
+        token: loginData.token,
+        username: profile.username,
+        role: profile.role,
+        userId: profile.id,
+        etatSurveillant: profile.etatSurveillant === 'SURVEILLANT' ? 'SURVEILLANT' : 'NON_SURVEILLANT',
+      })
+
       toast({ title: 'Connexion réussie' })
     },
-    onError: () =>
+    onError: (err: any) => {
       toast({
         title: 'Échec de la connexion',
-        description: 'Vérifiez vos identifiants.',
-        variant: 'destructive'
+        description: err?.response?.data?.message || 'Identifiants incorrects',
+        variant: 'destructive',
       })
+    },
   })
 }

@@ -1,6 +1,6 @@
 import { ReactNode, useEffect } from 'react'
 import { useAuthStore, Role } from '@/store/auth'
-import { useLocation, useNavigate } from 'react-router-dom'
+import { Navigate, useLocation } from 'react-router-dom'
 
 interface ProtectedRouteProps {
   children: ReactNode
@@ -8,28 +8,28 @@ interface ProtectedRouteProps {
 }
 
 export function ProtectedRoute({ children, allowedRoles }: ProtectedRouteProps) {
-  const { isAuthenticated, role, hydrate } = useAuthStore()
+  const { isAuthenticated, role, isAuthReady, hydrate } = useAuthStore()
   const location = useLocation()
-  const navigate = useNavigate()
 
+  // Load data from localStorage once
   useEffect(() => {
     hydrate()
-  }, [hydrate])
+  }, [])
 
-  useEffect(() => {
-    if (!isAuthenticated) {
-      navigate('/login', { replace: true, state: { from: location } })
-      return
-    }
+  // Still loading state → prevent redirect
+  if (!isAuthReady) {
+    return <div className="p-4 text-center">Loading...</div>
+  }
 
-    if (allowedRoles && role && !allowedRoles.includes(role)) {
-      navigate('/dashboard', { replace: true })
-      return
-    }
-  }, [isAuthenticated, role, allowedRoles, navigate])
+  // Not authenticated → redirect AFTER hydration
+  if (!isAuthenticated) {
+    return <Navigate to="/login" replace state={{ from: location }} />
+  }
 
-  if (!isAuthenticated) return null
-  if (allowedRoles && role && !allowedRoles.includes(role)) return null
+  // Role denied
+  if (allowedRoles && role && !allowedRoles.includes(role)) {
+    return <Navigate to="/dashboard" replace />
+  }
 
   return <>{children}</>
 }

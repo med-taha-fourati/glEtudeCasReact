@@ -146,7 +146,6 @@ export function DashboardHome() {
       const matieresList = s.matieres?.map((m: { nom: string }) => m.nom) || []
       const matiereNames = matieresList.slice(0, 2).join(', ')
       const extraMatieres = matieresList.length > 2 ? ` +${matieresList.length - 2}` : ''
-
       
       const nbSurveillants = countEnseignantsForSeance(s.id)
 
@@ -229,7 +228,7 @@ export function DashboardHome() {
       </div>
     )
   }
-
+//TODO: send video demonstratif sur afef.jemal@fsegs.usf.tn
   return (
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-3">

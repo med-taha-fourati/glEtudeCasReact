@@ -12,7 +12,9 @@ interface RegisterFormValues {
   username: string
   email: string
   password: string
-  role: 'ADMIN' | 'ENSEIGNANT'
+  role: 'ADMIN' | 'ENSEIGNANT',
+  etatSurveillant: string,
+  gradeId: number
 }
 
 export function RegisterPage() {
@@ -24,7 +26,9 @@ export function RegisterPage() {
       username: '',
       email: '',
       password: '',
-      role: 'ENSEIGNANT'
+      role: 'ENSEIGNANT',
+      etatSurveillant: 'PAS_SURVEILLANT',
+      gradeId: 1
     }
   })
 

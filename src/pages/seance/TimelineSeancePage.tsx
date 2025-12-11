@@ -18,9 +18,12 @@ import { enseignantApi } from '@/api/enseignant'
 import { useAuthStore } from '@/store/auth'
 import { useToast } from '@/components/ui/use-toast'
 import { useQueryClient } from '@tanstack/react-query'
-import { AlertCircle, Info, Users } from 'lucide-react'
+import { AlertCircle, Info, Users, Check, ChevronsUpDown } from 'lucide-react'
 import type { AppError } from '@/utils/errorHandling'
 import { ConfirmDialog } from '@/components/ui/confirm-dialog'
+import { Command, CommandEmpty, CommandInput, CommandItem, CommandList } from '@/components/ui/command'
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover'
+import { cn } from '@/lib/utils'
 
 const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16]
 const MIN_HOUR = 8
@@ -74,13 +77,14 @@ export function TimelineSeancePage() {
     const [dragBlockId, setDragBlockId] = useState<number | 'new' | null>(null)
 
 
-    const [selectedSeanceId, setSelectedSeanceId] = useState<number | null>(null)
+    const [selectedSeanceIds, setSelectedSeanceIds] = useState<number[]>([])
 
 
     const [selectedMatiereId, setSelectedMatiereId] = useState<string>('')
     const [isCreatingNewMatiere, setIsCreatingNewMatiere] = useState(false)
     const [newMatiereName, setNewMatiereName] = useState('')
     const [newMatiereNbPaquets, setNewMatiereNbPaquets] = useState<number>(1)
+    const [matierePopoverOpen, setMatierePopoverOpen] = useState(false)
     const [assignedSurveillants, setAssignedSurveillants] = useState<number[]>([])
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
@@ -227,18 +231,26 @@ export function TimelineSeancePage() {
             return
         }
 
+        const seanceId = block.seanceId
 
-        const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === block.seanceId)
-        if (seance) {
-            const assignedIds = seance.enseignants?.map((e: typeof seance.enseignants[0]) => e.id) || []
-            setAssignedSurveillants(assignedIds)
-
-
-            if (seance.matieres?.[0]) {
-                setSelectedMatiereId(String(seance.matieres[0].id))
+        // Check each enseignant to see if they have this seance in their list
+        const assignedIds: number[] = []
+        enseignants.forEach((enseignant: any) => {
+            // Check if this enseignant has the seance in their seances list
+            const hasSeance = enseignant.seances?.some((s: any) => s.id === seanceId)
+            if (hasSeance) {
+                assignedIds.push(enseignant.id)
             }
+        })
+
+        setAssignedSurveillants(assignedIds)
+
+        // Load matiere if available
+        const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === seanceId)
+        if (seance?.matieres?.[0]) {
+            setSelectedMatiereId(String(seance.matieres[0].id))
         }
-    }, [selectedBlockId, isAdmin, timeBlocks, dateSeances])
+    }, [selectedBlockId, isAdmin, timeBlocks, dateSeances, enseignants])
 
 
     const handleDeleteBlock = async (blockId: number | 'new') => {
@@ -360,12 +372,16 @@ export function TimelineSeancePage() {
 
     const handleSelectSeance = (seanceId: number) => {
         if (!isSurveillant) return
-        setSelectedSeanceId(prev => prev === seanceId ? null : seanceId)
+        setSelectedSeanceIds(prev => 
+            prev.includes(seanceId) 
+                ? prev.filter(id => id !== seanceId)
+                : [...prev, seanceId]
+        )
     }
 
 
     const selectedBlock = isAdmin ? timeBlocks.find(b => b.id === selectedBlockId) : null
-    const selectedSeance = isSurveillant ? dateSeances.find((s: typeof dateSeances[0]) => s.id === selectedSeanceId) : null
+    const selectedSeances = isSurveillant ? dateSeances.filter((s: typeof dateSeances[0]) => selectedSeanceIds.includes(s.id)) : []
 
 
     const getBlockStyle = (hDebut: number, hFin: number) => {
@@ -445,12 +461,12 @@ export function TimelineSeancePage() {
             }
 
             if (selectedBlock.isNew) {
+                // CREATE MODE
                 const response = await seanceApi.add(payload)
                 const seanceId = response.data.id
 
-
+                // Create new matiere or link existing one
                 if (isCreatingNewMatiere) {
-
                     const newMatierePayload: MatiereDTO = {
                         nom: newMatiereName.trim(),
                         nbPaquets: newMatiereNbPaquets,
@@ -458,7 +474,6 @@ export function TimelineSeancePage() {
                     }
                     await matiereApi.add(newMatierePayload)
                 } else {
-
                     if (matiere) {
                         const matierePayload: MatiereDTO = {
                             nom: matiere.nom,
@@ -469,7 +484,7 @@ export function TimelineSeancePage() {
                     }
                 }
 
-
+                // Assign surveillants
                 for (const enseignantId of assignedSurveillants) {
                     try {
                         await seanceApi.soumettreVoeu(enseignantId, seanceId)
@@ -483,10 +498,12 @@ export function TimelineSeancePage() {
                 }
 
                 toast({ title: 'Séance créée avec succès' })
+
             } else {
+                // EDIT MODE
                 await seanceApi.edit(selectedBlock.seanceId!, payload)
 
-
+                // Update matiere if using existing one
                 if (!isCreatingNewMatiere && matiere) {
                     const matierePayload: MatiereDTO = {
                         nom: matiere.nom,
@@ -496,8 +513,20 @@ export function TimelineSeancePage() {
                     await matiereApi.edit(matiere.id, matierePayload)
                 }
 
+                // Get currently assigned enseignants (those who have this seance)
+                const currentlyAssigned: number[] = []
+                enseignants.forEach((ens: any) => {
+                    if (ens.seances?.some((s: any) => s.id === selectedBlock.seanceId)) {
+                        currentlyAssigned.push(ens.id)
+                    }
+                })
 
-                for (const enseignantId of assignedSurveillants) {
+                // Find who to add and who to remove
+                const toAdd = assignedSurveillants.filter(id => !currentlyAssigned.includes(id))
+                const toRemove = currentlyAssigned.filter(id => !assignedSurveillants.includes(id))
+
+                // Add new assignments
+                for (const enseignantId of toAdd) {
                     try {
                         await seanceApi.soumettreVoeu(enseignantId, selectedBlock.seanceId!)
                     } catch (error) {
@@ -505,7 +534,16 @@ export function TimelineSeancePage() {
                     }
                 }
 
-                if (assignedSurveillants.length > 0) {
+                // Remove unchecked assignments
+                for (const enseignantId of toRemove) {
+                    try {
+                        await seanceApi.retirerVoeu(enseignantId, selectedBlock.seanceId!)
+                    } catch (error) {
+                        console.error(`Failed to remove surveillant ${enseignantId}:`, error)
+                    }
+                }
+
+                if (toAdd.length > 0 || toRemove.length > 0) {
                     await enseignantApi.recalcCharges()
                 }
 
@@ -533,17 +571,21 @@ export function TimelineSeancePage() {
 
 
     const handleEnseignantSubmit = async () => {
-        if (!isSurveillant || !selectedSeanceId || !userId) return
+        if (!isSurveillant || selectedSeanceIds.length === 0 || !userId) return
 
         setIsSubmitting(true)
 
         try {
-            await seanceApi.soumettreVoeu(userId, selectedSeanceId)
+            // Submit voeu for each selected seance
+            for (const seanceId of selectedSeanceIds) {
+                await seanceApi.soumettreVoeu(userId, seanceId)
+            }
+            
             await enseignantApi.recalcCharges()
 
             toast({
-                title: 'Vœu soumis avec succès!',
-                description: 'Vous avez été assigné à cette séance.'
+                title: 'Vœux soumis avec succès!',
+                description: `Vous avez été assigné à ${selectedSeanceIds.length} séance${selectedSeanceIds.length > 1 ? 's' : ''}.`
             })
 
             queryClient.invalidateQueries({ queryKey: ['seances'] })
@@ -565,17 +607,21 @@ export function TimelineSeancePage() {
 
 
     const handleEnseignantRetirer = async () => {
-        if (!isSurveillant || !selectedSeanceId || !userId) return
+        if (!isSurveillant || selectedSeanceIds.length === 0 || !userId) return
 
         setIsSubmitting(true)
 
         try {
-            await seanceApi.retirerVoeu(userId, selectedSeanceId)
+            // Retirer voeu for each selected seance
+            for (const seanceId of selectedSeanceIds) {
+                await seanceApi.retirerVoeu(userId, seanceId)
+            }
+            
             await enseignantApi.recalcCharges()
 
             toast({
-                title: 'Vœu retiré avec succès!',
-                description: 'Vous avez été désassigné de cette séance.'
+                title: 'Vœux retirés avec succès!',
+                description: `Vous avez été désassigné de ${selectedSeanceIds.length} séance${selectedSeanceIds.length > 1 ? 's' : ''}.`
             })
 
             queryClient.invalidateQueries({ queryKey: ['seances'] })
@@ -596,13 +642,16 @@ export function TimelineSeancePage() {
     }
 
 
-    const hasVoeuForSelectedSeance = () => {
-        if (!isSurveillant || !selectedSeanceId || !userId) return false
+    const hasVoeuForSelectedSeances = () => {
+        if (!isSurveillant || selectedSeanceIds.length === 0 || !userId) return false
 
         const currentEnseignant = enseignants.find((e: any) => e.id === userId)
         if (!currentEnseignant) return false
 
-        return currentEnseignant.seances?.some((s: any) => s.id === selectedSeanceId) || false
+        // Check if ALL selected seances already have voeux
+        return selectedSeanceIds.every(seanceId => 
+            currentEnseignant.seances?.some((s: any) => s.id === seanceId)
+        )
     }
 
 
@@ -893,7 +942,7 @@ export function TimelineSeancePage() {
                                 const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
                                 const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
                                 const matiereName = seance.matieres?.[0]?.nom || 'Matière inconnue'
-                                const isSelected = selectedSeanceId === seance.id
+                                const isSelected = selectedSeanceIds.includes(seance.id)
 
                                 return (
                                     <div key={seance.id} className="flex items-center">
@@ -945,9 +994,37 @@ export function TimelineSeancePage() {
                 isAdmin && selectedBlock && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>
-                                {selectedBlock.isNew ? 'Nouvelle séance' : 'Modifier la séance'}
-                            </CardTitle>
+                            <div className="flex items-center justify-between">
+                                <CardTitle>
+                                    {selectedBlock.isNew ? 'Nouvelle séance' : 'Modifier la séance'}
+                                </CardTitle>
+                                {!selectedBlock.isNew && (
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="sm"
+                                        onClick={() => {
+                                            // Switch to create mode - add new block to timeline
+                                            const newBlock: TimeBlock = {
+                                                id: 'new',
+                                                isNew: true,
+                                                hDebut: 8,
+                                                hFin: 10,
+                                                seanceId: undefined
+                                            }
+                                            setTimeBlocks(prev => [...prev, newBlock])
+                                            setSelectedBlockId('new')
+                                            setSelectedMatiereId('')
+                                            setAssignedSurveillants([])
+                                            setIsCreatingNewMatiere(false)
+                                            setNewMatiereName('')
+                                            setNewMatiereNbPaquets(1)
+                                        }}
+                                    >
+                                        + Créer nouvelle séance
+                                    </Button>
+                                )}
+                            </div>
                         </CardHeader>
                         <CardContent className="space-y-4">
                             <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
@@ -1140,39 +1217,43 @@ export function TimelineSeancePage() {
 
 
             {
-                isSurveillant && !isAdmin && selectedSeance && (
+                isSurveillant && !isAdmin && selectedSeances.length > 0 && (
                     <Card>
                         <CardHeader>
-                            <CardTitle>Séance sélectionnée</CardTitle>
+                            <CardTitle>
+                                {selectedSeances.length} séance{selectedSeances.length > 1 ? 's' : ''} sélectionnée{selectedSeances.length > 1 ? 's' : ''}
+                            </CardTitle>
                         </CardHeader>
                         <CardContent className="space-y-3">
-                            <div className="grid grid-cols-2 gap-4">
-                                <div>
-                                    <p className="text-sm text-slate-500">Séance</p>
-                                    <p className="font-medium">#{selectedSeance.id}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">Matière</p>
-                                    <p className="font-medium">{selectedSeance.matieres?.[0]?.nom || 'Non définie'}</p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">Horaire</p>
-                                    <p className="font-medium">
-                                        {selectedSeance.horaire?.embHoraire?.hdebut}h00 - {selectedSeance.horaire?.embHoraire?.hfin}h00
-                                    </p>
-                                </div>
-                                <div>
-                                    <p className="text-sm text-slate-500">Date</p>
-                                    <p className="font-medium capitalize">{formattedDate}</p>
-                                </div>
+                            <div className="space-y-2 max-h-60 overflow-y-auto">
+                                {selectedSeances.map((seance: typeof selectedSeances[0]) => (
+                                    <div key={seance.id} className="p-3 bg-slate-50 rounded-lg border">
+                                        <div className="grid grid-cols-3 gap-4">
+                                            <div>
+                                                <p className="text-xs text-slate-500">Séance</p>
+                                                <p className="font-medium">#{seance.id}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500">Matière</p>
+                                                <p className="font-medium text-sm">{seance.matieres?.[0]?.nom || 'Non définie'}</p>
+                                            </div>
+                                            <div>
+                                                <p className="text-xs text-slate-500">Horaire</p>
+                                                <p className="font-medium text-sm">
+                                                    {seance.horaire?.embHoraire?.hdebut}h - {seance.horaire?.embHoraire?.hfin}h
+                                                </p>
+                                            </div>
+                                        </div>
+                                    </div>
+                                ))}
                             </div>
 
                             <Alert>
                                 <Info className="h-4 w-4" />
-                                <AlertTitle>En soumettant ce vœu:</AlertTitle>
+                                <AlertTitle>En soumettant {selectedSeances.length > 1 ? 'ces vœux' : 'ce vœu'}:</AlertTitle>
                                 <AlertDescription>
                                     <ul className="list-disc list-inside mt-1 space-y-1">
-                                        <li>Vous serez assigné à cette séance de surveillance</li>
+                                        <li>Vous serez assigné à {selectedSeances.length > 1 ? 'ces séances' : 'cette séance'} de surveillance</li>
                                         <li>Vos charges de surveillance seront recalculées</li>
                                     </ul>
                                 </AlertDescription>
@@ -1198,20 +1279,20 @@ export function TimelineSeancePage() {
                     </Button>
                 ) : (
                     <>
-                        {hasVoeuForSelectedSeance() ? (
+                        {hasVoeuForSelectedSeances() ? (
                             <Button
                                 variant="destructive"
                                 onClick={handleEnseignantRetirer}
-                                disabled={isSubmitting || !selectedSeanceId}
+                                disabled={isSubmitting || selectedSeanceIds.length === 0}
                             >
-                                {isSubmitting ? 'En cours...' : 'Retirer mon vœu'}
+                                {isSubmitting ? 'En cours...' : `Retirer ${selectedSeanceIds.length > 1 ? 'mes vœux' : 'mon vœu'} (${selectedSeanceIds.length})`}
                             </Button>
                         ) : (
                             <Button
                                 onClick={handleEnseignantSubmit}
-                                disabled={isSubmitting || !selectedSeanceId}
+                                disabled={isSubmitting || selectedSeanceIds.length === 0}
                             >
-                                {isSubmitting ? 'En cours...' : 'Soumettre un vœu'}
+                                {isSubmitting ? 'En cours...' : `Soumettre ${selectedSeanceIds.length > 1 ? 'mes vœux' : 'un vœu'} (${selectedSeanceIds.length})`}
                             </Button>
                         )}
                     </>

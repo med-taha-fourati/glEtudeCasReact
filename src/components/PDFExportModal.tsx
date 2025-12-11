@@ -54,7 +54,7 @@ export function PDFExportModal({
         if (targetEnseignant.etatSurveillant !== 'SURVEILLANT') return false
         return true
     }
-
+//TODO: dont show matieres
     const handleGenerate = async () => {
         if (!canGenerate() || !targetEnseignant) {
             toast({

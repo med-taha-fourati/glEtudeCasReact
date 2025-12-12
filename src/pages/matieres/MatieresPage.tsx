@@ -15,16 +15,13 @@ import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '
 import { Pagination } from '@/components/ui/pagination'
 import { useMatieres } from '@/hooks/useMatieres'
 import { useEnseignants } from '@/hooks/useEnseignants'
+import { Matiere } from 'api/enseignant'
 
 const PAGE_SIZE = 8
 
 type MatiereForm = {
-  id?: number
-  code: string
-  libelle: string
-  description?: string
-  nbPaquets: number
-  responsableId?: number
+    nom: string;
+    nbPaquets: number;
 }
 
 export function MatieresPage() {
@@ -37,11 +34,8 @@ export function MatieresPage() {
 
   const form = useForm<MatiereForm>({
     defaultValues: {
-      code: '',
-      libelle: '',
-      description: '',
-      nbPaquets: 0,
-      responsableId: undefined
+    nom: '',
+    nbPaquets: 0
     }
   })
 
@@ -66,14 +60,10 @@ export function MatieresPage() {
     setOpen(true)
   }
 
-  const handleEdit = (matiere: any) => {
+  const handleEdit = (matiere: Matiere) => {
     const payload: MatiereForm = {
-      id: matiere.id,
-      code: matiere.code ?? '',
-      libelle: matiere.libelle ?? '',
-      description: matiere.description ?? '',
-      nbPaquets: matiere.nbPaquets ?? 0,
-      responsableId: matiere.responsableId
+      nom: matiere.nom ?? '',
+      nbPaquets: matiere.nbPaquets ?? 0
     }
     setEditing(payload)
     form.reset(payload)
@@ -88,12 +78,8 @@ export function MatieresPage() {
 
   const onSubmit = (values: MatiereForm) => {
     const payload = {
-      id: values.id,
-      code: values.code,
-      libelle: values.libelle,
-      description: values.description,
-      nbPaquets: Number(values.nbPaquets),
-      responsableId: values.responsableId
+      nom: values.nom,
+    nbPaquets: values.nbPaquets
     }
 
     if (editing) {
@@ -119,11 +105,8 @@ export function MatieresPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Code</TableHead>
-              <TableHead>Libellé</TableHead>
-              <TableHead>Description</TableHead>
-              <TableHead>Nb paquets</TableHead>
-              <TableHead>Responsable</TableHead>
+              <TableHead>Nom</TableHead>
+              <TableHead>Nombre de paquets</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
           </TableHeader>
@@ -142,15 +125,10 @@ export function MatieresPage() {
                 </TableCell>
               </TableRow>
             )}
-            {paginated.map((matiere: any) => (
+            {paginated.map((matiere: Matiere) => (
               <TableRow key={matiere.id}>
-                <TableCell>{matiere.code}</TableCell>
-                <TableCell>{matiere.libelle}</TableCell>
-                <TableCell>{matiere.description}</TableCell>
+                <TableCell>{matiere.nom}</TableCell>
                 <TableCell>{matiere.nbPaquets}</TableCell>
-                <TableCell>
-                  {matiere.responsable?.nom ? `${matiere.responsable.nom} ${matiere.responsable.prenom ?? ''}` : '-'}
-                </TableCell>
                 <TableCell className="text-right space-x-2">
                   <Button variant="ghost" size="sm" onClick={() => handleEdit(matiere)}>
                     Modifier
@@ -175,42 +153,13 @@ export function MatieresPage() {
           <form onSubmit={form.handleSubmit((values) => onSubmit({ ...values, id: editing?.id }))} className="space-y-4 pt-2">
             <FormField
               control={form.control}
-              name="code"
-              rules={{ required: 'Code requis' }}
+              name="nom"
+              rules={{ required: 'Nom requis' }}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Code</FormLabel>
+                  <FormLabel>Nom</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="Code de la matière" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="libelle"
-              rules={{ required: 'Libellé requis' }}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Libellé</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="Libellé" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="description"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Description</FormLabel>
-                  <FormControl>
-                    <Input {...field} placeholder="Description" />
+                    <Input {...field} placeholder="Nom de la matière" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -225,35 +174,18 @@ export function MatieresPage() {
                 <FormItem>
                   <FormLabel>Nombre de paquets</FormLabel>
                   <FormControl>
-                    <Input {...field} type="number" min={0} />
+                    <Input {...field} placeholder="e.g 10" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
               )}
             />
+            
+            {/**
+             * TODO: Add seanceId in here or remove it in the backend
+             */}
 
-            <FormField
-              control={form.control}
-              name="responsableId"
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Responsable</FormLabel>
-                  <FormControl>
-                    <select
-                      {...field}
-                      className="w-full rounded-md border border-slate-300 bg-white px-3 py-2 text-sm"
-                    >
-                      <option value="">Non défini</option>
-                      {enseignants.map((e: any) => (
-                        <option key={e.id} value={e.id}>{`${e.nom ?? ''} ${e.prenom ?? ''}`}</option>
-                      ))}
-                    </select>
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
+            
             <DialogFooter>
               <Button type="button" variant="outline" onClick={() => setOpen(false)}>
                 Annuler

@@ -14,13 +14,13 @@ import { Dialog, DialogFooter, DialogHeader, DialogTitle } from '@/components/ui
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from '@/components/ui/form'
 import { Pagination } from '@/components/ui/pagination'
 import { useGrades } from '@/hooks/useGrades'
+import { Grade } from 'api/enseignant'
 
 const PAGE_SIZE = 8
 
 type GradeForm = {
   id?: number
-  libelle: string
-  coefficient: number
+  grade: number
   chargeSurveillance: number
 }
 
@@ -33,15 +33,14 @@ export function GradesPage() {
 
   const form = useForm<GradeForm>({
     defaultValues: {
-      libelle: '',
-      coefficient: 1,
+      grade: 1,
       chargeSurveillance: 0
     }
   })
 
   useEffect(() => {
     if (!open) {
-      form.reset({ libelle: '', coefficient: 1, chargeSurveillance: 0 })
+      form.reset({ grade: 1, chargeSurveillance: 0 })
       setEditing(null)
     }
   }, [open, form])
@@ -60,11 +59,9 @@ export function GradesPage() {
     setOpen(true)
   }
 
-  const handleEdit = (grade: any) => {
+  const handleEdit = (grade: Grade) => {
     const payload: GradeForm = {
-      id: grade.id,
-      libelle: grade.libelle ?? '',
-      coefficient: grade.coefficient ?? 1,
+      grade: grade.grade ?? 0,
       chargeSurveillance: grade.chargeSurveillance ?? 0
     }
     setEditing(payload)
@@ -81,8 +78,7 @@ export function GradesPage() {
   const onSubmit = (values: GradeForm) => {
     const payload = {
       id: values.id,
-      libelle: values.libelle,
-      coefficient: Number(values.coefficient),
+      grade: values.grade,
       chargeSurveillance: Number(values.chargeSurveillance)
     }
 
@@ -109,8 +105,7 @@ export function GradesPage() {
         <Table>
           <TableHeader>
             <TableRow>
-              <TableHead>Libellé</TableHead>
-              <TableHead>Coefficient</TableHead>
+              <TableHead>Grade</TableHead>
               <TableHead>Charge de surveillance</TableHead>
               <TableHead className="text-right">Actions</TableHead>
             </TableRow>
@@ -130,10 +125,9 @@ export function GradesPage() {
                 </TableCell>
               </TableRow>
             )}
-            {paginated.map((grade: any) => (
+            {paginated.map((grade: Grade) => (
               <TableRow key={grade.id}>
-                <TableCell>{grade.libelle}</TableCell>
-                <TableCell>{grade.coefficient}</TableCell>
+                <TableCell>{grade.grade}</TableCell>
                 <TableCell>{grade.chargeSurveillance}</TableCell>
                 <TableCell className="text-right space-x-2">
                   <Button variant="ghost" size="sm" onClick={() => handleEdit(grade)}>
@@ -156,31 +150,16 @@ export function GradesPage() {
           <DialogTitle>{editing ? 'Modifier un grade' : 'Nouveau grade'}</DialogTitle>
         </DialogHeader>
         <Form {...form}>
-          <form onSubmit={form.handleSubmit((values) => onSubmit({ ...values, id: editing?.id }))} className="space-y-4 pt-2">
+          <form onSubmit={form.handleSubmit((values: GradeForm) => onSubmit({ ...values, id: editing?.id }))} className="space-y-4 pt-2">
             <FormField
               control={form.control}
-              name="libelle"
-              rules={{ required: 'Libellé requis' }}
+              name="grade"
+              rules={{ required: 'Grade' }}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Libellé</FormLabel>
+                  <FormLabel>Grade</FormLabel>
                   <FormControl>
-                    <Input {...field} placeholder="Libération" />
-                  </FormControl>
-                  <FormMessage />
-                </FormItem>
-              )}
-            />
-
-            <FormField
-              control={form.control}
-              name="coefficient"
-              rules={{ required: 'Coefficient requis' }}
-              render={({ field }) => (
-                <FormItem>
-                  <FormLabel>Coefficient</FormLabel>
-                  <FormControl>
-                    <Input {...field} type="number" min={0} step={0.1} />
+                    <Input {...field} placeholder="Grade" />
                   </FormControl>
                   <FormMessage />
                 </FormItem>
@@ -193,7 +172,7 @@ export function GradesPage() {
               rules={{ required: 'Charge de surveillance requise' }}
               render={({ field }) => (
                 <FormItem>
-                  <FormLabel>Charge de surveillance (heures)</FormLabel>
+                  <FormLabel>Charge de surveillance</FormLabel>
                   <FormControl>
                     <Input {...field} type="number" min={0} />
                   </FormControl>

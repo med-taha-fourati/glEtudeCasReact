@@ -32,9 +32,9 @@ export function Sidebar() {
             <NavLink to="/grades" className={linkClasses}>
               Grades
             </NavLink>
-            <NavLink to="/horaires" className={linkClasses}>
+            {/* <NavLink to="/horaires" className={linkClasses}>
               Horaires
-            </NavLink>
+            </NavLink> */}
             <NavLink to="/seances" className={linkClasses}>
               Séances
             </NavLink>

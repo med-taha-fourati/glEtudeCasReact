@@ -163,10 +163,10 @@ export function EnseignantList() {
                 <TableCell>{enseignant.nom}</TableCell>
                 <TableCell>{enseignant.prenom}</TableCell>
                 <TableCell>{enseignant.tel}</TableCell>
-                <TableCell>{enseignant.grade?.libelle ?? 'N/A'}</TableCell>
+                <TableCell>{enseignant.grade?.grade ?? 'N/A'}</TableCell>
                 <TableCell>
                   {enseignant.grade?.chargeSurveillance ? (
-                    <Badge variant="secondary">{enseignant.grade.chargeSurveillance} h</Badge>
+                    <Badge variant="secondary">{enseignant.grade.chargeSurveillance}</Badge>
                   ) : (
                     '-'
                   )}

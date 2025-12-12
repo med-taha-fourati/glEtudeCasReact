@@ -54,14 +54,14 @@ export function AppRouter() {
             </ProtectedRoute>
           }
         />
-        <Route
+        {/* <Route
           path="horaires"
           element={
             <ProtectedRoute allowedRoles={['ADMIN']}>
               <HorairesPage />
             </ProtectedRoute>
           }
-        />
+        /> */}
         <Route
           path="seances"
           element={

@@ -29,6 +29,9 @@ const HOURS = [8, 9, 10, 11, 12, 13, 14, 15, 16]
 const MIN_HOUR = 8
 const MAX_HOUR = 16
 
+// 🔥 Storage key for charge surveillance
+const CHARGE_STORAGE_KEY = 'dashboard.chargeSurveillance'
+
 type TimeBlock = {
     id: number | 'new'
     seanceId?: number
@@ -55,6 +58,26 @@ export function TimelineSeancePage() {
 
     const timelineRef = useRef<HTMLDivElement>(null)
 
+    // 🔥 Load chargeSurveillance from localStorage
+    const [chargeSurveillance, setChargeSurveillance] = useState<number | null>(() => {
+        const saved = localStorage.getItem(CHARGE_STORAGE_KEY)
+        return saved ? parseInt(saved, 10) : null
+    })
+
+    // 🔥 Fetch current charge from API if not in localStorage or on mount
+    useEffect(() => {
+        if (userId && role === 'ENSEIGNANT') {
+            enseignantApi.calculerChargeSurveillance(userId)
+                .then(response => {
+                    const charge = response.data.chargeSurveillance
+                    setChargeSurveillance(charge)
+                    localStorage.setItem(CHARGE_STORAGE_KEY, String(charge))
+                })
+                .catch(err => {
+                    console.error('Failed to fetch charge surveillance:', err)
+                })
+        }
+    }, [userId, role])
 
     const dateObj = date ? new Date(date) : new Date()
     const [jour, mois, annee] = date ? date.split('-').map(Number) : [dateObj.getDate(), dateObj.getMonth() + 1, dateObj.getFullYear()]
@@ -66,9 +89,7 @@ export function TimelineSeancePage() {
         day: 'numeric'
     })
 
-
     const dateSeances = allSeances.filter((s: typeof allSeances[0]) => s.seanceDate === date)
-
 
     const [timeBlocks, setTimeBlocks] = useState<TimeBlock[]>([])
     const [selectedBlockId, setSelectedBlockId] = useState<number | 'new' | null>(null)
@@ -76,9 +97,7 @@ export function TimelineSeancePage() {
     const [dragType, setDragType] = useState<'create' | 'resize-start' | 'resize-end' | null>(null)
     const [dragBlockId, setDragBlockId] = useState<number | 'new' | null>(null)
 
-
     const [selectedSeanceIds, setSelectedSeanceIds] = useState<number[]>([])
-
 
     const [selectedMatiereId, setSelectedMatiereId] = useState<string>('')
     const [isCreatingNewMatiere, setIsCreatingNewMatiere] = useState(false)
@@ -89,12 +108,10 @@ export function TimelineSeancePage() {
     const [isSubmitting, setIsSubmitting] = useState(false)
     const [errors, setErrors] = useState<string[]>([])
 
-    // Cascade delete state
     const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false)
     const [seanceToDelete, setSeanceToDelete] = useState<number | null>(null)
     const [linkedData, setLinkedData] = useState<{ type: string; count: number }[]>([])
     const [isDeleting, setIsDeleting] = useState(false)
-
 
     const eligibleSurveillants = useMemo(() => {
         if (!isAdmin) return []
@@ -108,12 +125,10 @@ export function TimelineSeancePage() {
         const selectedMatiere = matieres.find((m: typeof matieres[0]) => m.id === parseInt(selectedMatiereId))
         if (!selectedMatiere) return surveillants
 
-
         return surveillants.filter((e: typeof enseignants[0]) =>
             !e.matieres?.some((m: typeof e.matieres[0]) => m.id === selectedMatiere.id)
         )
     }, [isAdmin, enseignants, selectedMatiereId, matieres])
-
 
     useEffect(() => {
         if (!isAdmin) return
@@ -130,7 +145,6 @@ export function TimelineSeancePage() {
         setTimeBlocks(blocks)
     }, [dateSeances.length, date, isAdmin])
 
-
     const pixelToHour = (pixelX: number): number => {
         if (!timelineRef.current) return MIN_HOUR
 
@@ -142,7 +156,6 @@ export function TimelineSeancePage() {
 
         return Math.max(MIN_HOUR, Math.min(MAX_HOUR, Math.round(rawHour)))
     }
-
 
     const handleTimelineMouseDown = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!isAdmin) return
@@ -163,7 +176,6 @@ export function TimelineSeancePage() {
         setIsDragging(true)
     }
 
-
     const handleBlockEdgeMouseDown = (e: React.MouseEvent, blockId: number | 'new', edge: 'start' | 'end') => {
         if (!isAdmin) return
 
@@ -173,12 +185,10 @@ export function TimelineSeancePage() {
         setIsDragging(true)
     }
 
-
     const handleBlockClick = (blockId: number | 'new') => {
         if (!isAdmin) return
         setSelectedBlockId(blockId)
     }
-
 
     const handleMouseMove = (e: React.MouseEvent<HTMLDivElement>) => {
         if (!isAdmin || !isDragging || !dragBlockId) return
@@ -200,7 +210,6 @@ export function TimelineSeancePage() {
         }))
     }
 
-
     const handleMouseUp = () => {
         if (!isAdmin) return
 
@@ -209,12 +218,9 @@ export function TimelineSeancePage() {
         setDragBlockId(null)
     }
 
-
     const loadedBlockIdRef = useRef<number | 'new' | null>(null)
 
-
     useEffect(() => {
-
         if (loadedBlockIdRef.current === selectedBlockId) return
 
         loadedBlockIdRef.current = selectedBlockId
@@ -233,10 +239,8 @@ export function TimelineSeancePage() {
 
         const seanceId = block.seanceId
 
-        // Check each enseignant to see if they have this seance in their list
         const assignedIds: number[] = []
         enseignants.forEach((enseignant: any) => {
-            // Check if this enseignant has the seance in their seances list
             const hasSeance = enseignant.seances?.some((s: any) => s.id === seanceId)
             if (hasSeance) {
                 assignedIds.push(enseignant.id)
@@ -245,13 +249,11 @@ export function TimelineSeancePage() {
 
         setAssignedSurveillants(assignedIds)
 
-        // Load matiere if available
         const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === seanceId)
         if (seance?.matieres?.[0]) {
             setSelectedMatiereId(String(seance.matieres[0].id))
         }
     }, [selectedBlockId, isAdmin, timeBlocks, dateSeances, enseignants])
-
 
     const handleDeleteBlock = async (blockId: number | 'new') => {
         if (!isAdmin) return
@@ -267,13 +269,11 @@ export function TimelineSeancePage() {
 
         const seanceId = blockId as number
 
-        // Check for linked records
         const linkedMatieres = matieres.filter((m: any) => m.seance?.id === seanceId)
         const linkedEnseignants = enseignants.filter((e: any) =>
             e.seances?.some((s: any) => s.id === seanceId)
         )
 
-        // If has linked records, show confirmation dialog
         if (linkedMatieres.length > 0 || linkedEnseignants.length > 0) {
             const items = []
             if (linkedMatieres.length > 0) {
@@ -287,7 +287,6 @@ export function TimelineSeancePage() {
             setSeanceToDelete(seanceId)
             setDeleteConfirmOpen(true)
         } else {
-            // No linked records, safe to delete directly
             try {
                 await deleteMutation.mutateAsync(seanceId)
                 setTimeBlocks(prev => prev.filter(b => b.id !== blockId))
@@ -307,14 +306,12 @@ export function TimelineSeancePage() {
         }
     }
 
-    // Perform cascade delete after confirmation
     const handleConfirmCascadeDelete = async () => {
         if (!seanceToDelete) return
 
         setIsDeleting(true)
 
         try {
-            // Step 1: Remove all enseignant assignments
             const linkedEnseignants = enseignants.filter((e: any) =>
                 e.seances?.some((s: any) => s.id === seanceToDelete)
             )
@@ -327,7 +324,6 @@ export function TimelineSeancePage() {
                 }
             }
 
-            // Step 2: Delete matières linked to this séance
             const linkedMatieres = matieres.filter((m: any) => m.seance?.id === seanceToDelete)
 
             for (const matiere of linkedMatieres) {
@@ -338,7 +334,6 @@ export function TimelineSeancePage() {
                 }
             }
 
-            // Step 3: Now safe to delete the séance
             await deleteMutation.mutateAsync(seanceToDelete)
             setTimeBlocks(prev => prev.filter(b => b.id !== seanceToDelete))
             if (selectedBlockId === seanceToDelete) {
@@ -369,7 +364,6 @@ export function TimelineSeancePage() {
         }
     }
 
-
     const handleSelectSeance = (seanceId: number) => {
         if (!isSurveillant) return
         setSelectedSeanceIds(prev => 
@@ -379,10 +373,8 @@ export function TimelineSeancePage() {
         )
     }
 
-
     const selectedBlock = isAdmin ? timeBlocks.find(b => b.id === selectedBlockId) : null
     const selectedSeances = isSurveillant ? dateSeances.filter((s: typeof dateSeances[0]) => selectedSeanceIds.includes(s.id)) : []
-
 
     const getBlockStyle = (hDebut: number, hFin: number) => {
         const startPercent = ((hDebut - MIN_HOUR) / (MAX_HOUR - MIN_HOUR)) * 100
@@ -394,12 +386,10 @@ export function TimelineSeancePage() {
         }
     }
 
-
     const handleAdminSubmit = async () => {
         if (!isAdmin || !selectedBlock) return
 
         const validationErrors: string[] = []
-
 
         if (isCreatingNewMatiere) {
             if (!newMatiereName.trim()) {
@@ -435,7 +425,6 @@ export function TimelineSeancePage() {
         setIsSubmitting(true)
 
         try {
-
             let matiere = null
             if (!isCreatingNewMatiere) {
                 matiere = matieres.find((m: typeof matieres[0]) => m.id === parseInt(selectedMatiereId))
@@ -444,13 +433,11 @@ export function TimelineSeancePage() {
 
             const { hDebut, hFin } = selectedBlock
 
-
             try {
                 await horaireApi.get(hDebut, hFin)
             } catch {
                 await horaireApi.add({ hDebut, hFin })
             }
-
 
             const payload: SeanceDTO = {
                 jour: annee,
@@ -461,11 +448,9 @@ export function TimelineSeancePage() {
             }
 
             if (selectedBlock.isNew) {
-                // CREATE MODE
                 const response = await seanceApi.add(payload)
                 const seanceId = response.data.id
 
-                // Create new matiere or link existing one
                 if (isCreatingNewMatiere) {
                     const newMatierePayload: MatiereDTO = {
                         nom: newMatiereName.trim(),
@@ -484,7 +469,6 @@ export function TimelineSeancePage() {
                     }
                 }
 
-                // Assign surveillants
                 for (const enseignantId of assignedSurveillants) {
                     try {
                         await seanceApi.soumettreVoeu(enseignantId, seanceId)
@@ -500,10 +484,8 @@ export function TimelineSeancePage() {
                 toast({ title: 'Séance créée avec succès' })
 
             } else {
-                // EDIT MODE
                 await seanceApi.edit(selectedBlock.seanceId!, payload)
 
-                // Update matiere if using existing one
                 if (!isCreatingNewMatiere && matiere) {
                     const matierePayload: MatiereDTO = {
                         nom: matiere.nom,
@@ -513,7 +495,6 @@ export function TimelineSeancePage() {
                     await matiereApi.edit(matiere.id, matierePayload)
                 }
 
-                // Get currently assigned enseignants (those who have this seance)
                 const currentlyAssigned: number[] = []
                 enseignants.forEach((ens: any) => {
                     if (ens.seances?.some((s: any) => s.id === selectedBlock.seanceId)) {
@@ -521,11 +502,9 @@ export function TimelineSeancePage() {
                     }
                 })
 
-                // Find who to add and who to remove
                 const toAdd = assignedSurveillants.filter(id => !currentlyAssigned.includes(id))
                 const toRemove = currentlyAssigned.filter(id => !assignedSurveillants.includes(id))
 
-                // Add new assignments
                 for (const enseignantId of toAdd) {
                     try {
                         await seanceApi.soumettreVoeu(enseignantId, selectedBlock.seanceId!)
@@ -534,7 +513,6 @@ export function TimelineSeancePage() {
                     }
                 }
 
-                // Remove unchecked assignments
                 for (const enseignantId of toRemove) {
                     try {
                         await seanceApi.retirerVoeu(enseignantId, selectedBlock.seanceId!)
@@ -569,14 +547,23 @@ export function TimelineSeancePage() {
         }
     }
 
-
+    // 🔥🔥🔥 VALIDATION CHECK - Compare selected seances with chargeSurveillance
     const handleEnseignantSubmit = async () => {
         if (!isSurveillant || selectedSeanceIds.length === 0 || !userId) return
+
+        // 🔥 Check if selected seances exceed charge surveillance limit
+        if (chargeSurveillance !== null && selectedSeanceIds.length > chargeSurveillance) {
+            toast({
+                title: 'Charge de surveillance dépassée',
+                description: `Vous ne pouvez soumettre que ${chargeSurveillance} vœu${chargeSurveillance > 1 ? 'x' : ''} maximum. Vous avez sélectionné ${selectedSeanceIds.length} séance${selectedSeanceIds.length > 1 ? 's' : ''}.`,
+                variant: 'destructive'
+            })
+            return
+        }
 
         setIsSubmitting(true)
 
         try {
-            // Submit voeu for each selected seance
             for (const seanceId of selectedSeanceIds) {
                 await seanceApi.soumettreVoeu(userId, seanceId)
             }
@@ -605,14 +592,12 @@ export function TimelineSeancePage() {
         }
     }
 
-
     const handleEnseignantRetirer = async () => {
         if (!isSurveillant || selectedSeanceIds.length === 0 || !userId) return
 
         setIsSubmitting(true)
 
         try {
-            // Retirer voeu for each selected seance
             for (const seanceId of selectedSeanceIds) {
                 await seanceApi.retirerVoeu(userId, seanceId)
             }
@@ -641,24 +626,20 @@ export function TimelineSeancePage() {
         }
     }
 
-
     const hasVoeuForSelectedSeances = () => {
         if (!isSurveillant || selectedSeanceIds.length === 0 || !userId) return false
 
         const currentEnseignant = enseignants.find((e: any) => e.id === userId)
         if (!currentEnseignant) return false
 
-        // Check if ALL selected seances already have voeux
         return selectedSeanceIds.every(seanceId => 
             currentEnseignant.seances?.some((s: any) => s.id === seanceId)
         )
     }
 
-
     if (isReadOnly) {
         return (
             <div className="container mx-auto p-4 max-w-6xl space-y-6">
-
                 <div className="flex items-center justify-between">
                     <div>
                         <h1 className="text-2xl font-bold">Séances du jour</h1>
@@ -670,7 +651,6 @@ export function TimelineSeancePage() {
                     </Badge>
                 </div>
 
-
                 <Alert>
                     <AlertCircle className="h-4 w-4" />
                     <AlertTitle>Vous n'avez pas les droits pour cette action.</AlertTitle>
@@ -678,7 +658,6 @@ export function TimelineSeancePage() {
                         Contactez un administrateur pour devenir surveillant et pouvoir vous assigner aux séances.
                     </AlertDescription>
                 </Alert>
-
 
                 <Card>
                     <CardHeader>
@@ -694,7 +673,6 @@ export function TimelineSeancePage() {
                             </div>
                         ) : (
                             <div className="space-y-2">
-
                                 <div className="flex">
                                     <div className="w-32 flex-shrink-0" />
                                     <div
@@ -716,7 +694,6 @@ export function TimelineSeancePage() {
                                     </div>
                                     <div className="w-16 flex-shrink-0" />
                                 </div>
-
 
                                 {dateSeances.map((seance: typeof dateSeances[0]) => {
                                     const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
@@ -755,7 +732,6 @@ export function TimelineSeancePage() {
                     </CardContent>
                 </Card>
 
-
                 <div className="flex justify-end">
                     <Button variant="outline" onClick={() => navigate('/dashboard')}>
                         Retour au tableau de bord
@@ -765,10 +741,8 @@ export function TimelineSeancePage() {
         )
     }
 
-
     return (
         <div className="container mx-auto p-4 max-w-6xl space-y-6">
-
             <div className="flex items-center justify-between">
                 <div>
                     <h1 className="text-2xl font-bold">
@@ -785,9 +759,14 @@ export function TimelineSeancePage() {
                             ? 'Vous pouvez créer, modifier et supprimer des séances'
                             : 'Vous pouvez vous assigner aux séances existantes'}
                     </p>
+                    {/* 🔥 Display charge limit for surveillants */}
+                    {isSurveillant && chargeSurveillance !== null && (
+                        <p className="text-xs font-semibold text-blue-600 mt-1">
+                            Charge max: {chargeSurveillance} séance{chargeSurveillance > 1 ? 's' : ''}
+                        </p>
+                    )}
                 </div>
             </div>
-
 
             <Card>
                 <CardHeader>
@@ -805,7 +784,6 @@ export function TimelineSeancePage() {
                         </div>
                     ) : (
                         <div className="space-y-2">
-
                             <div className="flex">
                                 {!isAdmin && <div className="w-8 flex-shrink-0" />}
                                 <div className="w-32 flex-shrink-0" />
@@ -829,11 +807,9 @@ export function TimelineSeancePage() {
                                 <div className="w-16 flex-shrink-0" />
                             </div>
 
-
                             {isAdmin && (
                                 <>
                                     {timeBlocks.filter(b => !b.isNew).map((block) => {
-
                                         const seance = dateSeances.find((s: typeof dateSeances[0]) => s.id === block.seanceId)
                                         const surveillantCount = seance?.enseignants?.length || 0
 
@@ -937,7 +913,6 @@ export function TimelineSeancePage() {
                                 </>
                             )}
 
-
                             {isSurveillant && !isAdmin && dateSeances.map((seance: typeof dateSeances[0]) => {
                                 const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
                                 const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
@@ -984,285 +959,289 @@ export function TimelineSeancePage() {
                                 )
                             })}
                         </div>
-                    )
-                    }
-                </CardContent >
-            </Card >
+                    )}
+                </CardContent>
+            </Card>
 
+            {/* Rest of the JSX continues... */}
+            {isAdmin && selectedBlock && (
+                <Card>
+                    <CardHeader>
+                        <div className="flex items-center justify-between">
+                            <CardTitle>
+                                {selectedBlock.isNew ? 'Nouvelle séance' : 'Modifier la séance'}
+                            </CardTitle>
+                            {!selectedBlock.isNew && (
+                                <Button
+                                    type="button"
+                                    variant="outline"
+                                    size="sm"
+                                    onClick={() => {
+                                        const newBlock: TimeBlock = {
+                                            id: 'new',
+                                            isNew: true,
+                                            hDebut: 8,
+                                            hFin: 10,
+                                            seanceId: undefined
+                                        }
+                                        setTimeBlocks(prev => [...prev, newBlock])
+                                        setSelectedBlockId('new')
+                                        setSelectedMatiereId('')
+                                        setAssignedSurveillants([])
+                                        setIsCreatingNewMatiere(false)
+                                        setNewMatiereName('')
+                                        setNewMatiereNbPaquets(1)
+                                    }}
+                                >
+                                    + Créer nouvelle séance
+                                </Button>
+                            )}
+                        </div>
+                    </CardHeader>
+                    <CardContent className="space-y-4">
+                        <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
+                            <p className="text-sm font-medium">
+                                Plage horaire: {selectedBlock.hDebut}h00 - {selectedBlock.hFin}h00
+                            </p>
+                        </div>
 
-            {
-                isAdmin && selectedBlock && (
-                    <Card>
-                        <CardHeader>
+                        <div className="space-y-3">
                             <div className="flex items-center justify-between">
-                                <CardTitle>
-                                    {selectedBlock.isNew ? 'Nouvelle séance' : 'Modifier la séance'}
-                                </CardTitle>
-                                {!selectedBlock.isNew && (
+                                <label className="text-sm font-medium">Matière *</label>
+                                {selectedBlock.isNew && (
                                     <Button
                                         type="button"
                                         variant="outline"
                                         size="sm"
                                         onClick={() => {
-                                            // Switch to create mode - add new block to timeline
-                                            const newBlock: TimeBlock = {
-                                                id: 'new',
-                                                isNew: true,
-                                                hDebut: 8,
-                                                hFin: 10,
-                                                seanceId: undefined
+                                            setIsCreatingNewMatiere(!isCreatingNewMatiere)
+                                            if (!isCreatingNewMatiere) {
+                                                setSelectedMatiereId('')
                                             }
-                                            setTimeBlocks(prev => [...prev, newBlock])
-                                            setSelectedBlockId('new')
-                                            setSelectedMatiereId('')
-                                            setAssignedSurveillants([])
-                                            setIsCreatingNewMatiere(false)
-                                            setNewMatiereName('')
-                                            setNewMatiereNbPaquets(1)
                                         }}
                                     >
-                                        + Créer nouvelle séance
+                                        {isCreatingNewMatiere ? 'Choisir existante' : 'Créer nouvelle'}
                                     </Button>
                                 )}
                             </div>
-                        </CardHeader>
-                        <CardContent className="space-y-4">
-                            <div className="bg-blue-50 border border-blue-200 rounded-lg p-3">
-                                <p className="text-sm font-medium">
-                                    Plage horaire: {selectedBlock.hDebut}h00 - {selectedBlock.hFin}h00
-                                </p>
-                            </div>
 
-                            <div className="space-y-3">
-                                <div className="flex items-center justify-between">
-                                    <label className="text-sm font-medium">Matière *</label>
-                                    {selectedBlock.isNew && (
-                                        <Button
-                                            type="button"
-                                            variant="outline"
-                                            size="sm"
-                                            onClick={() => {
-                                                setIsCreatingNewMatiere(!isCreatingNewMatiere)
-                                                if (!isCreatingNewMatiere) {
-                                                    setSelectedMatiereId('')
-                                                }
-                                            }}
-                                        >
-                                            {isCreatingNewMatiere ? 'Choisir existante' : 'Créer nouvelle'}
-                                        </Button>
-                                    )}
-                                </div>
-
-                                {isCreatingNewMatiere ? (
-                                    <div className="space-y-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">Nom de la matière</label>
-                                            <Input
-                                                value={newMatiereName}
-                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMatiereName(e.target.value)}
-                                                placeholder="Ex: Mathématiques"
-                                            />
-                                        </div>
-                                        <div className="space-y-2">
-                                            <label className="text-sm font-medium">Nombre de paquets</label>
-                                            <Input
-                                                type="number"
-                                                min="1"
-                                                value={newMatiereNbPaquets}
-                                                onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMatiereNbPaquets(parseInt(e.target.value) || 1)}
-                                            />
-                                        </div>
+                            {isCreatingNewMatiere ? (
+                                <div className="space-y-3 p-3 bg-blue-50 border border-blue-200 rounded-lg">
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Nom de la matière</label>
+                                        <Input
+                                            value={newMatiereName}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMatiereName(e.target.value)}
+                                            placeholder="Ex: Mathématiques"
+                                        />
                                     </div>
-                                ) : (
-                                    <Select value={selectedMatiereId} onValueChange={setSelectedMatiereId}>
-                                        <SelectTrigger>
-                                            <SelectValue placeholder="Sélectionnez une matière" />
-                                        </SelectTrigger>
-                                        <SelectContent>
-                                            {matieres.map((matiere: typeof matieres[0]) => (
-                                                <SelectItem key={matiere.id} value={String(matiere.id)}>
-                                                    {matiere.nom} ({matiere.nbPaquets} paquets)
-                                                </SelectItem>
-                                            ))}
-                                        </SelectContent>
-                                    </Select>
-                                )}
-                            </div>
-
-                            <div className="grid grid-cols-2 gap-4">
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Heure de début</label>
-                                    <Input
-                                        type="number"
-                                        value={selectedBlock.hDebut}
-                                        onChange={(e: any) => {
-                                            const newValue = parseInt(e.target.value) || MIN_HOUR
-                                            setTimeBlocks(prev => prev.map(b =>
-                                                b.id === selectedBlockId ? { ...b, hDebut: newValue } : b
-                                            ))
-                                        }}
-                                        min={MIN_HOUR}
-                                        max={MAX_HOUR - 1}
-                                    />
+                                    <div className="space-y-2">
+                                        <label className="text-sm font-medium">Nombre de paquets</label>
+                                        <Input
+                                            type="number"
+                                            min="1"
+                                            value={newMatiereNbPaquets}
+                                            onChange={(e: React.ChangeEvent<HTMLInputElement>) => setNewMatiereNbPaquets(parseInt(e.target.value) || 1)}
+                                        />
+                                    </div>
                                 </div>
-                                <div className="space-y-2">
-                                    <label className="text-sm font-medium">Heure de fin</label>
-                                    <Input
-                                        type="number"
-                                        value={selectedBlock.hFin}
-                                        onChange={(e: any) => {
-                                            const newValue = parseInt(e.target.value) || MIN_HOUR + 1
-                                            setTimeBlocks(prev => prev.map(b =>
-                                                b.id === selectedBlockId ? { ...b, hFin: newValue } : b
-                                            ))
-                                        }}
-                                        min={MIN_HOUR + 1}
-                                        max={MAX_HOUR}
-                                    />
-                                </div>
-                            </div>
+                            ) : (
+                                <Select value={selectedMatiereId} onValueChange={setSelectedMatiereId}>
+                                    <SelectTrigger>
+                                        <SelectValue placeholder="Sélectionnez une matière" />
+                                    </SelectTrigger>
+                                    <SelectContent>
+                                        {matieres.map((matiere: typeof matieres[0]) => (
+                                            <SelectItem key={matiere.id} value={String(matiere.id)}>
+                                                {matiere.nom} ({matiere.nbPaquets} paquets)
+                                            </SelectItem>
+                                        ))}
+                                    </SelectContent>
+                                </Select>
+                            )}
+                        </div>
 
-
+                        <div className="grid grid-cols-2 gap-4">
                             <div className="space-y-2">
-                                <div className="flex items-center gap-2">
-                                    <Users className="w-4 h-4 text-slate-600" />
-                                    <label className="text-sm font-medium">Assigner des surveillants</label>
-                                    <Badge variant="secondary" className="text-xs">
-                                        {assignedSurveillants.length} sélectionné{assignedSurveillants.length !== 1 ? 's' : ''}
-                                    </Badge>
-                                </div>
+                                <label className="text-sm font-medium">Heure de début</label>
+                                <Input
+                                    type="number"
+                                    value={selectedBlock.hDebut}
+                                    onChange={(e: any) => {
+                                        const newValue = parseInt(e.target.value) || MIN_HOUR
+                                        setTimeBlocks(prev => prev.map(b =>
+                                            b.id === selectedBlockId ? { ...b, hDebut: newValue } : b
+                                        ))
+                                    }}
+                                    min={MIN_HOUR}
+                                    max={MAX_HOUR - 1}
+                                />
+                            </div>
+                            <div className="space-y-2">
+                                <label className="text-sm font-medium">Heure de fin</label>
+                                <Input
+                                    type="number"
+                                    value={selectedBlock.hFin}
+                                    onChange={(e: any) => {
+                                        const newValue = parseInt(e.target.value) || MIN_HOUR + 1
+                                        setTimeBlocks(prev => prev.map(b =>
+                                            b.id === selectedBlockId ? { ...b, hFin: newValue } : b
+                                        ))
+                                    }}
+                                    min={MIN_HOUR + 1}
+                                    max={MAX_HOUR}
+                                />
+                            </div>
+                        </div>
 
-                                {eligibleSurveillants.length === 0 ? (
-                                    <Alert>
-                                        <Info className="h-4 w-4" />
-                                        <AlertDescription>
-                                            {!selectedMatiereId
-                                                ? 'Sélectionnez une matière pour voir les surveillants éligibles'
-                                                : 'Aucun surveillant éligible pour cette matière'}
-                                        </AlertDescription>
-                                    </Alert>
-                                ) : (
-                                    <div className="border rounded-lg p-3 max-h-60 overflow-y-auto space-y-2 bg-slate-50">
-                                        {eligibleSurveillants.map((ens: typeof enseignants[0]) => {
-                                            const isSelected = assignedSurveillants.includes(ens.id)
-                                            const ownsMatiere = selectedMatiereId && matieres.find((m: typeof matieres[0]) =>
-                                                m.id === parseInt(selectedMatiereId)
-                                            ) && ens.matieres?.some((m: typeof ens.matieres[0]) =>
-                                                m.id === parseInt(selectedMatiereId)
-                                            )
-
-                                            return (
-                                                <label
-                                                    key={ens.id}
-                                                    className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${ownsMatiere
-                                                        ? 'opacity-50 cursor-not-allowed bg-red-50'
-                                                        : isSelected
-                                                            ? 'bg-blue-100 hover:bg-blue-200'
-                                                            : 'hover:bg-slate-100'
-                                                        }`}
-                                                >
-                                                    <input
-                                                        type="checkbox"
-                                                        checked={isSelected}
-                                                        disabled={!!ownsMatiere}
-                                                        onChange={(e) => {
-                                                            if (e.target.checked) {
-                                                                setAssignedSurveillants(prev => [...prev, ens.id])
-                                                            } else {
-                                                                setAssignedSurveillants(prev => prev.filter(id => id !== ens.id))
-                                                            }
-                                                        }}
-                                                        className="w-4 h-4 cursor-pointer accent-blue-600"
-                                                        aria-label={`Assigner ${ens.nom} ${ens.prenom}`}
-                                                    />
-                                                    <div className="flex-1">
-                                                        <div className="text-sm font-medium">
-                                                            {ens.nom} {ens.prenom}
-                                                        </div>
-                                                        {ownsMatiere && (
-                                                            <div className="text-xs text-red-600">
-                                                                ⚠️ Ne peut surveiller sa propre matière
-                                                            </div>
-                                                        )}
-                                                    </div>
-                                                    {isSelected && !ownsMatiere && (
-                                                        <Badge variant="default" className="text-xs">
-                                                            Assigné
-                                                        </Badge>
-                                                    )}
-                                                </label>
-                                            )
-                                        })}
-                                    </div>
-                                )}
+                        <div className="space-y-2">
+                            <div className="flex items-center gap-2">
+                                <Users className="w-4 h-4 text-slate-600" />
+                                <label className="text-sm font-medium">Assigner des surveillants</label>
+                                <Badge variant="secondary" className="text-xs">
+                                    {assignedSurveillants.length} sélectionné{assignedSurveillants.length !== 1 ? 's' : ''}
+                                </Badge>
                             </div>
 
-                            {errors.length > 0 && (
-                                <Alert variant="destructive">
-                                    <AlertCircle className="h-4 w-4" />
-                                    <AlertTitle>Erreurs de validation</AlertTitle>
+                            {eligibleSurveillants.length === 0 ? (
+                                <Alert>
+                                    <Info className="h-4 w-4" />
                                     <AlertDescription>
-                                        <ul className="list-disc list-inside space-y-1">
-                                            {errors.map((error, index) => (
-                                                <li key={index}>{error}</li>
-                                            ))}
-                                        </ul>
+                                        {!selectedMatiereId
+                                            ? 'Sélectionnez une matière pour voir les surveillants éligibles'
+                                            : 'Aucun surveillant éligible pour cette matière'}
                                     </AlertDescription>
                                 </Alert>
+                            ) : (
+                                <div className="border rounded-lg p-3 max-h-60 overflow-y-auto space-y-2 bg-slate-50">
+                                    {eligibleSurveillants.map((ens: typeof enseignants[0]) => {
+                                        const isSelected = assignedSurveillants.includes(ens.id)
+                                        const ownsMatiere = selectedMatiereId && matieres.find((m: typeof matieres[0]) =>
+                                            m.id === parseInt(selectedMatiereId)
+                                        ) && ens.matieres?.some((m: typeof ens.matieres[0]) =>
+                                            m.id === parseInt(selectedMatiereId)
+                                        )
+
+                                        return (
+                                            <label
+                                                key={ens.id}
+                                                className={`flex items-center gap-3 p-2 rounded cursor-pointer transition-colors ${ownsMatiere
+                                                    ? 'opacity-50 cursor-not-allowed bg-red-50'
+                                                    : isSelected
+                                                        ? 'bg-blue-100 hover:bg-blue-200'
+                                                        : 'hover:bg-slate-100'
+                                                    }`}
+                                            >
+                                                <input
+                                                    type="checkbox"
+                                                    checked={isSelected}
+                                                    disabled={!!ownsMatiere}
+                                                    onChange={(e) => {
+                                                        if (e.target.checked) {
+                                                            setAssignedSurveillants(prev => [...prev, ens.id])
+                                                        } else {
+                                                            setAssignedSurveillants(prev => prev.filter(id => id !== ens.id))
+                                                        }
+                                                    }}
+                                                    className="w-4 h-4 cursor-pointer accent-blue-600"
+                                                    aria-label={`Assigner ${ens.nom} ${ens.prenom}`}
+                                                />
+                                                <div className="flex-1">
+                                                    <div className="text-sm font-medium">
+                                                        {ens.nom} {ens.prenom}
+                                                    </div>
+                                                    {ownsMatiere && (
+                                                        <div className="text-xs text-red-600">
+                                                            ⚠️ Ne peut surveiller sa propre matière
+                                                        </div>
+                                                    )}
+                                                </div>
+                                                {isSelected && !ownsMatiere && (
+                                                    <Badge variant="default" className="text-xs">
+                                                        Assigné
+                                                    </Badge>
+                                                )}
+                                            </label>
+                                        )
+                                    })}
+                                </div>
                             )}
-                        </CardContent>
-                    </Card>
-                )
-            }
+                        </div>
 
-
-            {
-                isSurveillant && !isAdmin && selectedSeances.length > 0 && (
-                    <Card>
-                        <CardHeader>
-                            <CardTitle>
-                                {selectedSeances.length} séance{selectedSeances.length > 1 ? 's' : ''} sélectionnée{selectedSeances.length > 1 ? 's' : ''}
-                            </CardTitle>
-                        </CardHeader>
-                        <CardContent className="space-y-3">
-                            <div className="space-y-2 max-h-60 overflow-y-auto">
-                                {selectedSeances.map((seance: typeof selectedSeances[0]) => (
-                                    <div key={seance.id} className="p-3 bg-slate-50 rounded-lg border">
-                                        <div className="grid grid-cols-3 gap-4">
-                                            <div>
-                                                <p className="text-xs text-slate-500">Séance</p>
-                                                <p className="font-medium">#{seance.id}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-slate-500">Matière</p>
-                                                <p className="font-medium text-sm">{seance.matieres?.[0]?.nom || 'Non définie'}</p>
-                                            </div>
-                                            <div>
-                                                <p className="text-xs text-slate-500">Horaire</p>
-                                                <p className="font-medium text-sm">
-                                                    {seance.horaire?.embHoraire?.hdebut}h - {seance.horaire?.embHoraire?.hfin}h
-                                                </p>
-                                            </div>
-                                        </div>
-                                    </div>
-                                ))}
-                            </div>
-
-                            <Alert>
-                                <Info className="h-4 w-4" />
-                                <AlertTitle>En soumettant {selectedSeances.length > 1 ? 'ces vœux' : 'ce vœu'}:</AlertTitle>
+                        {errors.length > 0 && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Erreurs de validation</AlertTitle>
                                 <AlertDescription>
-                                    <ul className="list-disc list-inside mt-1 space-y-1">
-                                        <li>Vous serez assigné à {selectedSeances.length > 1 ? 'ces séances' : 'cette séance'} de surveillance</li>
-                                        <li>Vos charges de surveillance seront recalculées</li>
+                                    <ul className="list-disc list-inside space-y-1">
+                                        {errors.map((error, index) => (
+                                            <li key={index}>{error}</li>
+                                        ))}
                                     </ul>
                                 </AlertDescription>
                             </Alert>
-                        </CardContent>
-                    </Card>
-                )
-            }
+                        )}
+                    </CardContent>
+                </Card>
+            )}
 
+            {isSurveillant && !isAdmin && selectedSeances.length > 0 && (
+                <Card>
+                    <CardHeader>
+                        <CardTitle>
+                            {selectedSeances.length} séance{selectedSeances.length > 1 ? 's' : ''} sélectionnée{selectedSeances.length > 1 ? 's' : ''}
+                        </CardTitle>
+                    </CardHeader>
+                    <CardContent className="space-y-3">
+                        <div className="space-y-2 max-h-60 overflow-y-auto">
+                            {selectedSeances.map((seance: typeof selectedSeances[0]) => (
+                                <div key={seance.id} className="p-3 bg-slate-50 rounded-lg border">
+                                    <div className="grid grid-cols-3 gap-4">
+                                        <div>
+                                            <p className="text-xs text-slate-500">Séance</p>
+                                            <p className="font-medium">#{seance.id}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-slate-500">Matière</p>
+                                            <p className="font-medium text-sm">{seance.matieres?.[0]?.nom || 'Non définie'}</p>
+                                        </div>
+                                        <div>
+                                            <p className="text-xs text-slate-500">Horaire</p>
+                                            <p className="font-medium text-sm">
+                                                {seance.horaire?.embHoraire?.hdebut}h - {seance.horaire?.embHoraire?.hfin}h
+                                            </p>
+                                        </div>
+                                    </div>
+                                </div>
+                            ))}
+                        </div>
+
+                        {/* 🔥 Warning if exceeding charge limit */}
+                        {chargeSurveillance !== null && selectedSeanceIds.length > chargeSurveillance && (
+                            <Alert variant="destructive">
+                                <AlertCircle className="h-4 w-4" />
+                                <AlertTitle>Charge dépassée!</AlertTitle>
+                                <AlertDescription>
+                                    Vous avez sélectionné {selectedSeanceIds.length} séance{selectedSeanceIds.length > 1 ? 's' : ''}, 
+                                    mais votre charge maximale est de {chargeSurveillance}. 
+                                    Veuillez désélectionner {selectedSeanceIds.length - chargeSurveillance} séance{selectedSeanceIds.length - chargeSurveillance > 1 ? 's' : ''}.
+                                </AlertDescription>
+                            </Alert>
+                        )}
+
+                        <Alert>
+                            <Info className="h-4 w-4" />
+                            <AlertTitle>En soumettant {selectedSeances.length > 1 ? 'ces vœux' : 'ce vœu'}:</AlertTitle>
+                            <AlertDescription>
+                                <ul className="list-disc list-inside mt-1 space-y-1">
+                                    <li>Vous serez assigné à {selectedSeances.length > 1 ? 'ces séances' : 'cette séance'} de surveillance</li>
+                                    <li>Vos charges de surveillance seront recalculées</li>
+                                </ul>
+                            </AlertDescription>
+                        </Alert>
+                    </CardContent>
+                </Card>
+            )}
 
             <div className="flex justify-end gap-3">
                 <Button variant="outline" onClick={() => navigate('/dashboard')}>
@@ -1308,6 +1287,6 @@ export function TimelineSeancePage() {
                 linkedItems={linkedData}
                 isLoading={isDeleting}
             />
-        </div >
+        </div>
     )
 }

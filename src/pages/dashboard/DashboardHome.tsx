@@ -18,7 +18,8 @@ import { Calendar, Users, BookOpen, FileDown } from 'lucide-react'
 import api from '@/api/api'
 import type { AppError } from '@/utils/errorHandling'
 
-const FILTER_STORAGE_KEY = 'dashboard.showOnlyMySurveillances'
+const FILTER_STORAGE_KEY = 'dashboard.showOnlyMySurveillances';
+const CHARGE_STORAGE_KEY = 'dashboard.chargeSurveillance';
 
 export function DashboardHome() {
   const navigate = useNavigate()
@@ -64,7 +65,10 @@ export function DashboardHome() {
   const totalSeances = filteredSeances.length
 
   
-  const [chargeSurveillance, setChargeSurveillance] = useState<number | null>(null)
+  const [chargeSurveillance, setChargeSurveillance] = useState<number | null>(() => {
+    const saved = localStorage.getItem(CHARGE_STORAGE_KEY);
+    return saved;
+  })
   const [m, setM] = useState<number | null>(null)
 
   useEffect(() => {
@@ -73,6 +77,8 @@ export function DashboardHome() {
         .then(response => {
           setChargeSurveillance(response.data.chargeSurveillance)
           setM(response.data.m);
+
+          localStorage.setItem(CHARGE_STORAGE_KEY, String(response.data.chargeSurveillance));
         })
         .catch(err => {
           const error = err as AppError

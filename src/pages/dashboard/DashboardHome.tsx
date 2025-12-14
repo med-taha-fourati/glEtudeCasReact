@@ -136,7 +136,6 @@ export function DashboardHome() {
       return aStart - bStart
     })
 
-    
     const visibleSeances = sortedSeances.slice(0, 3)
     const hiddenCount = sortedSeances.length - 3
 
@@ -148,11 +147,12 @@ export function DashboardHome() {
       const startStr = `${s.seanceDate}T${String(hDebut).padStart(2, '0')}:00:00`
       const endStr = `${s.seanceDate}T${String(hFin).padStart(2, '0')}:00:00`
 
-      
       const matieresList = s.matieres?.map((m: { nom: string }) => m.nom) || []
       const matiereNames = matieresList.slice(0, 2).join(', ')
       const extraMatieres = matieresList.length > 2 ? ` +${matieresList.length - 2}` : ''
       
+      const totalPaquets = s.matieres?.reduce((sum: number, m: any) => sum + (m.nbPaquets || 0), 0) || 0
+
       const nbSurveillants = countEnseignantsForSeance(s.id)
 
       return {
@@ -167,6 +167,7 @@ export function DashboardHome() {
           details: `${hDebut}h - ${hFin}h`,
           matieres: matiereNames + extraMatieres,
           surveillants: `Surveillants: ${nbSurveillants}`,
+          paquets: `Paquets: ${totalPaquets}`,
           seanceId: s.id,
           verrouillee: s.verrouillee,
           passeeExamen: s.passeeExamen
@@ -174,22 +175,23 @@ export function DashboardHome() {
       }
     })
 
-    
     if (hiddenCount > 0) {
       const showMoreEvent = {
         id: `more-${date}`,
-        title: `+${hiddenCount} séance${hiddenCount > 1 ? 's' : ''}`,
-        start: `${date}T16:00:00`,
-        end: `${date}T16:30:00`,
+        title: `Voir plus (${hiddenCount})`,
+        start: `${date}T23:00:00`,
+        end: `${date}T23:59:59`,
         backgroundColor: '#64748b',
-        borderColor: '#64748b',
+        borderColor: '#475569',
         textColor: '#ffffff',
-        display: 'background' as const,
         extendedProps: {
           isMoreIndicator: true,
-          details: 'Cliquez pour voir toutes les séances',
+          details: '',
           matieres: '',
-          surveillants: ''
+          paquets: 0,
+          surveillants: '',
+          hiddenCount: hiddenCount,
+          dateStr: date
         }
       }
       return [...visibleEvents, showMoreEvent]
@@ -201,6 +203,16 @@ export function DashboardHome() {
 
   
   const EventContent = ({ eventInfo }: { eventInfo: any }) => {
+    if (eventInfo.event.extendedProps.isMoreIndicator) {
+      return (
+        <div className="w-full h-full p-1 bg-slate-500 text-white overflow-hidden rounded cursor-pointer hover:bg-slate-600 transition-colors flex items-center justify-center">
+          <div className="text-xs font-semibold text-center">
+            + {eventInfo.event.extendedProps.hiddenCount} séance{eventInfo.event.extendedProps.hiddenCount > 1 ? 's' : ''}
+          </div>
+        </div>
+      )
+    }
+
     const [requiredN, setRequiredN] = useState<number | null>(null)
     const seanceId = eventInfo.event.extendedProps.seanceId
 
@@ -218,6 +230,7 @@ export function DashboardHome() {
 
     const nbAssigned = eventInfo.event.extendedProps.surveillants.match(/\d+/)?.[0] || '0'
     const nbRequired = requiredN !== null ? requiredN : '...'
+    const nbPaquets = eventInfo.event.extendedProps.paquets || 0
 
     return (
       <div className="w-full h-full p-1 text-white overflow-hidden rounded">
@@ -229,7 +242,7 @@ export function DashboardHome() {
         <div className="text-[10px] opacity-90 truncate">{eventInfo.event.extendedProps.details}</div>
         <div className="text-[10px] opacity-80 truncate">{eventInfo.event.extendedProps.matieres}</div>
         <div className="text-[10px] opacity-80 font-medium">
-          👥 {nbAssigned}/{nbRequired}
+          👥 {nbAssigned}/{nbRequired} - 📦 {nbPaquets}
         </div>
       </div>
     )
@@ -279,18 +292,24 @@ export function DashboardHome() {
         {/* <Button onClick={() => navigate('/seances')}>Voir les séances</Button> */}
       </div>
 
-      <div className={`grid ${role == "ENSEIGNANT" ? 'gap-4 md:grid-cols-2 lg:grid-cols-4' : 'gap-3 md:grid-cols-2 lg:grid-cols-3'}`}>
+      <div className={`grid ${role == "ENSEIGNANT" ? 'gap-2 md:grid-cols-3 lg:grid-cols-3' : 'gap-3 md:grid-cols-2 lg:grid-cols-3'}`}>
         <Card>
           <CardHeader>
             <CardTitle>Séances</CardTitle>
           </CardHeader>
           <CardContent>
             <p className="text-3xl font-bold">
-              {seancesLoading ? '...' : totalSeances}
+              <p className="text-3xl font-bold text-green-600">
+                {enseignantsLoading ? '...' : (() => {
+                  const currentEnseignant = enseignants.find((e: typeof enseignants[0]) => e.id === userId)
+                  return currentEnseignant?.seances?.length || 0
+                })()}
+              </p>
             </p>
           </CardContent>
         </Card>
 
+        {role === 'ADMIN' && (
         <Card>
           <CardHeader>
             <CardTitle>Enseignants</CardTitle>
@@ -301,7 +320,9 @@ export function DashboardHome() {
             </p>
           </CardContent>
         </Card>
+        )}
 
+        {role === 'ADMIN' && (
         <Card>
           <CardHeader>
             <CardTitle>Matières</CardTitle>
@@ -313,7 +334,7 @@ export function DashboardHome() {
             <p className="text-xs text-slate-500">Nombre total de matières dans le système</p>
           </CardContent>
         </Card>
-
+        )}
         
         {role === 'ENSEIGNANT' && (
           <Card>
@@ -324,6 +345,34 @@ export function DashboardHome() {
               <p className="text-3xl font-bold text-blue-600">
                 {chargeSurveillance !== null ? chargeSurveillance : '...'}
               </p>
+            </CardContent>
+          </Card>
+        )}
+
+        {role === 'ENSEIGNANT' && (
+          <Card>
+            <CardHeader>
+              <CardTitle>Mes paquets</CardTitle>
+            </CardHeader>
+            <CardContent>
+              <p className="text-3xl font-bold text-purple-600">
+                {enseignantsLoading || seancesLoading ? '...' : (() => {
+                  const currentEnseignant = enseignants.find((e: typeof enseignants[0]) => e.id === userId)
+                  if (!currentEnseignant?.seances) return 0
+                  
+                  const mySeanceIds = currentEnseignant.seances.map((s: any) => s.id)
+                  const mySeances = seances.filter((s: typeof seances[0]) => mySeanceIds.includes(s.id))
+                  
+                  const totalPaquets = mySeances.reduce((sum: number, s: typeof seances[0]) => {
+                    const seancePaquets = s.matieres?.reduce((mSum: number, m: any) => 
+                      mSum + (m.nbPaquets || 0), 0) || 0
+                    return sum + seancePaquets
+                  }, 0)
+                  
+                  return totalPaquets
+                })()}
+              </p>
+              <p className="text-xs text-slate-500">Total de paquets assignés</p>
             </CardContent>
           </Card>
         )}

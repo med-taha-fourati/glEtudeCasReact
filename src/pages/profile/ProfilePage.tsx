@@ -25,9 +25,11 @@ export function ProfilePage() {
     queryKey: ['seances-details', data?.seances],
     queryFn: async () => {
       if (!data?.seances || data.seances.length === 0) return []
-      const seancePromises = data.seances.map(s => 
-        seanceApi.fetch(s.id).then(res => res.data)
-      )
+      const seancePromises = data.seances.map(s => { 
+        const e =  seanceApi.fetch(s.id).then(res => res.data);
+        console.log('Fetched seance:', e);
+        return e;
+    })
       return Promise.all(seancePromises)
     },
     enabled: !!data?.seances && data.seances.length > 0
@@ -105,7 +107,7 @@ export function ProfilePage() {
                           </div>
                           <div className="text-sm text-slate-500 mt-1">
                             {seance.horaire?.embHoraire
-                              ? `${seance.horaire.embHoraire.hDebut}h - ${seance.horaire.embHoraire.hFin}h`
+                              ? `${seance.horaire.embHoraire.hdebut}h - ${seance.horaire.embHoraire.hfin}h`
                               : 'Horaire non défini'}
                           </div>
                           {seance.matieres && seance.matieres.length > 0 && (
@@ -141,24 +143,6 @@ export function ProfilePage() {
             )}
           </Card>
 
-          <Card>
-            <CardHeader>
-              <CardTitle>Liste des Matières</CardTitle>
-            </CardHeader>
-            {profile.matieres && profile.matieres.length > 0 ? (
-              <CardContent>
-                <div className="flex flex-wrap gap-2">
-                  {profile.matieres.map((matiere: Matiere) => (
-                    <Badge key={matiere.id} variant="outline">
-                      {matiere.nom} ({matiere.nbPaquets} paquets)
-                    </Badge>
-                  ))}
-                </div>
-              </CardContent>
-            ) : (
-              <CardContent>Aucune matière assignée.</CardContent>
-            )}
-          </Card>
         </div>
 
         <div className="space-y-4">
@@ -206,6 +190,26 @@ export function ProfilePage() {
                 </Badge>
               </div>
             </CardContent>
+          </Card>
+
+
+          <Card>
+            <CardHeader>
+              <CardTitle>Mes Matières</CardTitle>
+            </CardHeader>
+            {profile.matieres && profile.matieres.length > 0 ? (
+              <CardContent>
+                <div className="flex flex-wrap gap-2">
+                  {profile.matieres.map((matiere: Matiere) => (
+                    <Badge key={matiere.id} variant="outline">
+                      {matiere.nom} ({matiere.nbPaquets} paquets)
+                    </Badge>
+                  ))}
+                </div>
+              </CardContent>
+            ) : (
+              <CardContent>Aucune matière assignée.</CardContent>
+            )}
           </Card>
         </div>
       </div>

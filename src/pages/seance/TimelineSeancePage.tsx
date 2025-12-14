@@ -643,6 +643,13 @@ export function TimelineSeancePage() {
         )
     }
 
+    const isSeanceWishedByMe = (seanceId: number) => {
+    if (!userId) return false
+        const currentEnseignant = enseignants.find((e: any) => e.id === userId)
+    if (!currentEnseignant) return false
+        return currentEnseignant.seances?.some((s: any) => s.id === seanceId)
+    }
+
     if (isReadOnly) {
         return (
             <div className="container mx-auto p-4 max-w-6xl space-y-6">
@@ -705,6 +712,7 @@ export function TimelineSeancePage() {
                                     const hDebut = seance.horaire?.embHoraire?.hdebut ?? MIN_HOUR
                                     const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
                                     const matiereName = seance.matieres?.[0]?.nom || 'Matière inconnue'
+                                    const isAlreadyWished = isSeanceWishedByMe(seance.id)
 
                                     return (
                                         <div key={seance.id} className="flex items-center">
@@ -715,6 +723,7 @@ export function TimelineSeancePage() {
                                                 <div className="text-xs text-slate-500 truncate">
                                                     {matiereName}
                                                 </div>
+                                                
                                             </div>
 
                                             <div className="relative flex-1 h-12 bg-slate-100 rounded">
@@ -922,6 +931,7 @@ export function TimelineSeancePage() {
                             const hFin = seance.horaire?.embHoraire?.hfin ?? MIN_HOUR + 2
                             const matiereName = seance.matieres?.[0]?.nom || 'Matière inconnue'
                             const isSelected = selectedSeanceIds.includes(seance.id)
+                            const isAlreadyWished = isSeanceWishedByMe(seance.id)
 
                             return (
                                 <div key={seance.id} className="flex items-center">
@@ -942,14 +952,22 @@ export function TimelineSeancePage() {
                                         <div className="text-xs text-slate-500 truncate">
                                             {matiereName}
                                         </div>
+                                        {isAlreadyWished && (
+                                            <Badge variant="destructive" className="text-xs mt-1">
+                                                        Déjà souhaité
+                                                </Badge>
+                                    )}
                                     </div>
 
                                     <div className="relative flex-1 h-12 bg-slate-100 rounded">
                                         <div
-                                            className={`absolute top-1 bottom-1 rounded transition-all cursor-pointer ${isSelected
-                                                ? 'bg-blue-600 ring-2 ring-blue-700'
-                                                : 'bg-blue-400'
-                                                }`}
+                                            className={`absolute top-1 bottom-1 rounded transition-all cursor-pointer ${
+                                                isAlreadyWished
+                                                    ? 'bg-red-500 ring-2 ring-red-600'
+                                                    : isSelected
+                                                    ? 'bg-blue-600 ring-2 ring-blue-700'
+                                                    : 'bg-blue-400'
+                                            }`}
                                             style={getBlockStyle(hDebut, hFin)}
                                             onClick={() => handleSelectSeance(seance.id)}
                                         >

@@ -1,5 +1,7 @@
 import api from './api'
 
+export type IdOr<T> = number | T
+
 export type LoginPayload = {
   username: string
   password: string
@@ -27,7 +29,7 @@ export type Seance = {
   seanceDate: string
   verrouillee: boolean
   passeeExamen: boolean
-  matieres?: Matiere[]
+  matieres?: IdOr<Matiere>[]
   horaire?: {
     embHoraire: {
       hDebut: number
@@ -36,7 +38,6 @@ export type Seance = {
   }
 }
 
-// Full entity type (returned from backend)
 export type Enseignant = {
   id: number
   username: string
@@ -46,12 +47,12 @@ export type Enseignant = {
   etatSurveillant: 'PAS_SURVEILLANT' | 'SURVEILLANT'
   role: 'ADMIN' | 'ENSEIGNANT'
   anciennete: number
-  grade?: Grade
-  matieres?: Matiere[]
-  seances?: Seance[]
+
+  grade?: IdOr<Grade>
+  matieres?: IdOr<Matiere>[]
+  seances?: IdOr<Seance>[]
 }
 
-// DTO type (for creation/editing)
 export type EnseignantDTO = {
   username: string
   password: string
@@ -63,20 +64,36 @@ export type EnseignantDTO = {
   etatSurveillant: 'PAS_SURVEILLANT' | 'SURVEILLANT'
 }
 
-// Response type for charge surveillance calculation
 export type CalculerMResponse = {
   enseignantId: number
-  m: number,
+  m: number
   chargeSurveillance: number
 }
 
 export const enseignantApi = {
-  login: (payload: LoginPayload) => api.post<LoginResponse>('/enseignant/login', payload),
-  register: (payload: EnseignantDTO) => api.post<Enseignant>('/enseignant/register', payload),
-  profile: (token: string) => api.post<Enseignant>('/enseignant/profile', { token }),
-  fetchAll: () => api.get<Enseignant[]>('/enseignant/fetch'),
-  edit: (id: number, payload: EnseignantDTO) => api.put<Enseignant>(`/enseignant/edit?id=${id}`, payload),
-  delete: (id: number) => api.delete(`/enseignant/delete?id=${id}`),
-  recalcCharges: () => api.post('/enseignant/recalculer-charges'),
-  calculerChargeSurveillance: (enseignantId: number) => api.get<CalculerMResponse>(`/enseignant/calculer-charge-surveillance?enseignantId=${enseignantId}`)
+  login: (payload: LoginPayload) =>
+    api.post<LoginResponse>('/enseignant/login', payload),
+
+  register: (payload: EnseignantDTO) =>
+    api.post<Enseignant>('/enseignant/register', payload),
+
+  profile: (token: string) =>
+    api.post<Enseignant>('/enseignant/profile', { token }),
+
+  fetchAll: () =>
+    api.get<Enseignant[]>('/enseignant/fetch'),
+
+  edit: (id: number, payload: EnseignantDTO) =>
+    api.put<Enseignant>(`/enseignant/edit?id=${id}`, payload),
+
+  delete: (id: number) =>
+    api.delete(`/enseignant/delete?id=${id}`),
+
+  recalcCharges: () =>
+    api.post('/enseignant/recalculer-charges'),
+
+  calculerChargeSurveillance: (enseignantId: number) =>
+    api.get<CalculerMResponse>(
+      `/enseignant/calculer-charge-surveillance?enseignantId=${enseignantId}`
+    )
 }
